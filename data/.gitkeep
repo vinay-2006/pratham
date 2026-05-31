@@ -1,0 +1,8 @@
+# data/ — Test datasets go here
+#
+# Expected structure:
+#   raw/         — Raw unprocessed datasets
+#   processed/   — Preprocessed feature matrices
+#   synthetic/   — Synthetic patient data for testing
+#
+# These files are excluded from git via .gitignore (*.csv, *.parquet, *.json)

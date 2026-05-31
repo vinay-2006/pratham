@@ -1,0 +1,8 @@
+# notebooks/ — Colab training notebooks go here
+#
+# Planned notebooks:
+#   01_data_exploration.ipynb
+#   02_risk_model_training.ipynb
+#   03_cxr_model_training.ipynb
+#   04_ner_finetuning.ipynb
+#   05_evaluation_metrics.ipynb

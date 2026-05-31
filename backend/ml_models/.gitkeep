@@ -1,0 +1,10 @@
+# ml_models/ — Store trained model weights and configs here
+#
+# Expected files (to be added when models are trained):
+#   risk_model.pt         — PyTorch risk scoring model
+#   risk_model_config.json
+#   cxr_model.pt          — Chest X-Ray classification model
+#   cxr_model_config.json
+#   ner_model/            — Clinical NER model directory
+#
+# These files are excluded from git via .gitignore
