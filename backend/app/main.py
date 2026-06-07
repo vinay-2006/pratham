@@ -17,9 +17,9 @@ load_dotenv()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown logic."""
-    print("🏥 PRATHAM backend starting up...")
+    print("[PRATHAM] Backend starting up...")
     yield
-    print("🏥 PRATHAM backend shutting down...")
+    print("[PRATHAM] Backend shutting down...")
 
 
 # ── App Factory ─────────────────────────────────────────────────────────────
@@ -37,9 +37,12 @@ app = FastAPI(
 # ── CORS ────────────────────────────────────────────────────────────────────
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
+# Allow both the configured frontend URL and common local dev ports
+_cors_origins = list({frontend_url, "http://localhost:8080", "http://localhost:5173"})
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[frontend_url],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
