@@ -44,12 +44,12 @@ class PatientCreate(BaseModel):
 
 
 class VitalsCreate(BaseModel):
-    heart_rate: Optional[int] = None
-    spo2: Optional[float] = None
-    bp_systolic: Optional[int] = None
-    bp_diastolic: Optional[int] = None
-    temperature: Optional[float] = None
-    respiratory_rate: Optional[int] = None
+    heart_rate: Optional[int] = Field(None, ge=20, le=250, description="Heart rate (bpm) — valid range 20-250")
+    spo2: Optional[float] = Field(None, ge=50, le=100, description="SpO2 (%) — valid range 50-100")
+    bp_systolic: Optional[int] = Field(None, ge=50, le=300, description="Systolic BP (mmHg) — valid range 50-300")
+    bp_diastolic: Optional[int] = Field(None, ge=20, le=200, description="Diastolic BP (mmHg) — valid range 20-200")
+    temperature: Optional[float] = Field(None, ge=30.0, le=45.0, description="Temperature (°C) — valid range 30-45")
+    respiratory_rate: Optional[int] = Field(None, ge=4, le=80, description="Respiratory rate (/min) — valid range 4-80")
 
 
 class SymptomsCreate(BaseModel):

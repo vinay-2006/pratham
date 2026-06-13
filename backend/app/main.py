@@ -7,9 +7,12 @@ from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.requests import Request
+from fastapi.responses import JSONResponse
 
-from app.api import intake, nlp, risk, investigation, imaging, labs, aggregation
+from app.api import intake, nlp, risk, investigation, imaging, labs, aggregation, investigations
 
 load_dotenv()
 
@@ -34,6 +37,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
+# ── Convert Pydantic validation errors to 400 Bad Request ───────────────────
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """Return 400 with clear field-level error messages instead of Pydantic's default 422."""
+    errors = []
+    for err in exc.errors():
+        field = " → ".join(str(loc) for loc in err.get("loc", []) if loc != "body")
+        errors.append(f"{field}: {err['msg']}")
+    return JSONResponse(
+        status_code=400,
+        content={
+            "detail": "Validation failed",
+            "errors": errors,
+        },
+    )
+
+
 # ── CORS ────────────────────────────────────────────────────────────────────
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
@@ -56,6 +77,7 @@ app.include_router(investigation.router, prefix="/investigation", tags=["Investi
 app.include_router(imaging.router, prefix="/evidence", tags=["Evidence"])
 app.include_router(labs.router, prefix="/evidence", tags=["Evidence"])
 app.include_router(aggregation.router, tags=["Aggregation"])
+app.include_router(investigations.router, prefix="/api", tags=["Investigations"])
 
 
 # ── Health Check ─────────────────────────────────────────────────────────────

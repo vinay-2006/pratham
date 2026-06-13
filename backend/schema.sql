@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS public.emergency_intake (
     chief_complaint TEXT,
     status TEXT DEFAULT 'intake_pending',
     severity_level TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- 3. VITALS
@@ -100,6 +101,11 @@ CREATE TABLE IF NOT EXISTS public.investigation_recommendations (
     intake_id UUID REFERENCES public.emergency_intake(id) ON DELETE CASCADE,
     investigation_type TEXT NOT NULL,
     status TEXT DEFAULT 'pending_approval',
+    approved_at TIMESTAMPTZ,
+    approved_by TEXT,
+    rejected_at TIMESTAMPTZ,
+    rejected_by TEXT,
+    review_notes TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

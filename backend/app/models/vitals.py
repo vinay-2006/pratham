@@ -32,8 +32,8 @@ class VitalsCreate(BaseModel):
     patient_id: uuid.UUID
 
     # Haemodynamics
-    systolic_bp: int = Field(..., ge=0, le=300, description="Systolic blood pressure (mmHg)")
-    diastolic_bp: int = Field(..., ge=0, le=200, description="Diastolic blood pressure (mmHg)")
+    bp_systolic: int = Field(..., ge=0, le=300, description="Systolic blood pressure (mmHg)")
+    bp_diastolic: int = Field(..., ge=0, le=200, description="Diastolic blood pressure (mmHg)")
     heart_rate: int = Field(..., ge=0, le=300, description="Heart rate (bpm)")
     map_value: float | None = Field(None, description="Mean arterial pressure (mmHg)")
 
