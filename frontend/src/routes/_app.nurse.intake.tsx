@@ -12,7 +12,6 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
-import { MockUploadDropzone } from "@/components/mock-upload-dropzone";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_app/nurse/intake")({
@@ -106,7 +105,7 @@ function NurseIntakePage() {
   const parseName = (full: string) => {
     const parts = full.trim().split(/\s+/);
     const first_name = parts[0] ?? "";
-    const last_name = parts.slice(1).join(" ") || (parts[0] ?? "");
+    const last_name = parts.slice(1).join(" ");
     return { first_name, last_name };
   };
 
@@ -268,12 +267,6 @@ function NurseIntakePage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader><CardTitle className="text-base">Upload evidence (optional)</CardTitle></CardHeader>
-            <CardContent>
-              <MockUploadDropzone label="Evidence" hint="X-ray, ECG, labs, or notes" />
-            </CardContent>
-          </Card>
         </div>
 
         <aside className="lg:sticky lg:top-20 lg:self-start">

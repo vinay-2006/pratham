@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, Bell, Brain, ShieldAlert, Stethoscope } from "lucide-react";
+import { ArrowRight, Bell, Brain, FileText, ShieldAlert, Stethoscope } from "lucide-react";
 import { useCase } from "@/lib/case-store";
 import { SectionHeader } from "@/components/section-header";
 import { NotificationCard } from "@/components/notification-card";
@@ -85,7 +85,18 @@ function DoctorDashboard() {
                         {n.symptoms.join(", ")} · {n.timestamp}
                       </p>
                     </div>
-                    <span className="text-[11px] font-medium text-muted-foreground">{n.status}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[11px] font-medium text-muted-foreground">{n.status}</span>
+                      <Link
+                        to="/doctor/report/$intakeId"
+                        params={{ intakeId: n.intake_id }}
+                        className="flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium text-primary transition-colors hover:bg-primary/10"
+                        onClick={(e: React.MouseEvent) => e.stopPropagation()}
+                      >
+                        <FileText className="h-3 w-3" />
+                        Report
+                      </Link>
+                    </div>
                   </div>
                 ))}
               </CardContent>
@@ -123,6 +134,7 @@ function DoctorDashboard() {
             </CardHeader>
             <CardContent className="space-y-2">
               <Jump to="/doctor/review" icon={Stethoscope} label="Patient review workspace" />
+              <Jump to="/nurse/queue" icon={FileText} label="Clinical reports (via queue)" />
               <Jump to="/explainability" icon={Brain} label="Explainability panel" />
               <Jump to="/confidence" icon={ShieldAlert} label="Confidence assessment" />
             </CardContent>

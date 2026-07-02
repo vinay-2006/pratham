@@ -26,6 +26,8 @@ import { Route as AppNurseDashboardRouteImport } from './routes/_app.nurse.dashb
 import { Route as AppDoctorReviewRouteImport } from './routes/_app.doctor.review'
 import { Route as AppDoctorDashboardRouteImport } from './routes/_app.doctor.dashboard'
 import { Route as AppDoctorApprovalsRouteImport } from './routes/_app.doctor.approvals'
+import { Route as AppDoctorReportLatestRouteImport } from './routes/_app.doctor.report.latest'
+import { Route as AppDoctorReportIntakeIdRouteImport } from './routes/_app.doctor.report.$intakeId'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -111,6 +113,16 @@ const AppDoctorApprovalsRoute = AppDoctorApprovalsRouteImport.update({
   path: '/doctor/approvals',
   getParentRoute: () => AppRoute,
 } as any)
+const AppDoctorReportLatestRoute = AppDoctorReportLatestRouteImport.update({
+  id: '/doctor/report/latest',
+  path: '/doctor/report/latest',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDoctorReportIntakeIdRoute = AppDoctorReportIntakeIdRouteImport.update({
+  id: '/doctor/report/$intakeId',
+  path: '/doctor/report/$intakeId',
+  getParentRoute: () => AppRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -129,6 +141,8 @@ export interface FileRoutesByFullPath {
   '/nurse/dashboard': typeof AppNurseDashboardRoute
   '/nurse/intake': typeof AppNurseIntakeRoute
   '/nurse/queue': typeof AppNurseQueueRoute
+  '/doctor/report/$intakeId': typeof AppDoctorReportIntakeIdRoute
+  '/doctor/report/latest': typeof AppDoctorReportLatestRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -147,6 +161,8 @@ export interface FileRoutesByTo {
   '/nurse/dashboard': typeof AppNurseDashboardRoute
   '/nurse/intake': typeof AppNurseIntakeRoute
   '/nurse/queue': typeof AppNurseQueueRoute
+  '/doctor/report/$intakeId': typeof AppDoctorReportIntakeIdRoute
+  '/doctor/report/latest': typeof AppDoctorReportLatestRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -167,6 +183,8 @@ export interface FileRoutesById {
   '/_app/nurse/dashboard': typeof AppNurseDashboardRoute
   '/_app/nurse/intake': typeof AppNurseIntakeRoute
   '/_app/nurse/queue': typeof AppNurseQueueRoute
+  '/_app/doctor/report/$intakeId': typeof AppDoctorReportIntakeIdRoute
+  '/_app/doctor/report/latest': typeof AppDoctorReportLatestRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -187,6 +205,8 @@ export interface FileRouteTypes {
     | '/nurse/dashboard'
     | '/nurse/intake'
     | '/nurse/queue'
+    | '/doctor/report/$intakeId'
+    | '/doctor/report/latest'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -205,6 +225,8 @@ export interface FileRouteTypes {
     | '/nurse/dashboard'
     | '/nurse/intake'
     | '/nurse/queue'
+    | '/doctor/report/$intakeId'
+    | '/doctor/report/latest'
   id:
     | '__root__'
     | '/'
@@ -224,6 +246,8 @@ export interface FileRouteTypes {
     | '/_app/nurse/dashboard'
     | '/_app/nurse/intake'
     | '/_app/nurse/queue'
+    | '/_app/doctor/report/$intakeId'
+    | '/_app/doctor/report/latest'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -352,6 +376,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDoctorApprovalsRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/doctor/report/latest': {
+      id: '/_app/doctor/report/latest'
+      path: '/doctor/report/latest'
+      fullPath: '/doctor/report/latest'
+      preLoaderRoute: typeof AppDoctorReportLatestRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/doctor/report/$intakeId': {
+      id: '/_app/doctor/report/$intakeId'
+      path: '/doctor/report/$intakeId'
+      fullPath: '/doctor/report/$intakeId'
+      preLoaderRoute: typeof AppDoctorReportIntakeIdRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
@@ -371,6 +409,8 @@ interface AppRouteChildren {
   AppNurseDashboardRoute: typeof AppNurseDashboardRoute
   AppNurseIntakeRoute: typeof AppNurseIntakeRoute
   AppNurseQueueRoute: typeof AppNurseQueueRoute
+  AppDoctorReportIntakeIdRoute: typeof AppDoctorReportIntakeIdRoute
+  AppDoctorReportLatestRoute: typeof AppDoctorReportLatestRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
@@ -389,6 +429,8 @@ const AppRouteChildren: AppRouteChildren = {
   AppNurseDashboardRoute: AppNurseDashboardRoute,
   AppNurseIntakeRoute: AppNurseIntakeRoute,
   AppNurseQueueRoute: AppNurseQueueRoute,
+  AppDoctorReportIntakeIdRoute: AppDoctorReportIntakeIdRoute,
+  AppDoctorReportLatestRoute: AppDoctorReportLatestRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

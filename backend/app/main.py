@@ -12,7 +12,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 
-from app.api import intake, nlp, risk, investigation, imaging, labs, aggregation, investigations
+from app.api import intake, nlp, risk, investigation, imaging, labs, aggregation, investigations, evidence, lab_analysis, imaging_analysis, report
+from app.ml.lab_model import load_lab_model
+from app.ml.imaging_model import load_imaging_model
 
 load_dotenv()
 
@@ -21,6 +23,21 @@ load_dotenv()
 async def lifespan(app: FastAPI):
     """Startup and shutdown logic."""
     print("[PRATHAM] Backend starting up...")
+    # Load XGBoost cardiac model + SHAP explainer once at startup
+    try:
+        load_lab_model()
+        print("[PRATHAM] XGBoost cardiac model loaded.")
+    except Exception as exc:
+        print(f"[PRATHAM] WARNING: Lab model failed to load: {exc}")
+    # Load EfficientNetB0 pneumonia model — fail fast if missing
+    try:
+        load_imaging_model()
+        print("[PRATHAM] EfficientNetB0 imaging model loaded.")
+    except FileNotFoundError as exc:
+        print(f"[PRATHAM] FATAL: Imaging model file not found: {exc}")
+        raise SystemExit(1)
+    except Exception as exc:
+        print(f"[PRATHAM] WARNING: Imaging model failed to load: {exc}")
     yield
     print("[PRATHAM] Backend shutting down...")
 
@@ -76,8 +93,12 @@ app.include_router(risk.router, prefix="/risk", tags=["Risk"])
 app.include_router(investigation.router, prefix="/investigation", tags=["Investigation"])
 app.include_router(imaging.router, prefix="/evidence", tags=["Evidence"])
 app.include_router(labs.router, prefix="/evidence", tags=["Evidence"])
-app.include_router(aggregation.router, tags=["Aggregation"])
+app.include_router(aggregation.router, prefix="/api", tags=["Aggregation"])
 app.include_router(investigations.router, prefix="/api", tags=["Investigations"])
+app.include_router(evidence.router, prefix="/api", tags=["Evidence Upload"])
+app.include_router(lab_analysis.router, prefix="/api", tags=["Lab Analysis"])
+app.include_router(imaging_analysis.router, prefix="/api", tags=["Imaging Analysis"])
+app.include_router(report.router, prefix="/api", tags=["Clinical Report"])
 
 
 # ── Health Check ─────────────────────────────────────────────────────────────

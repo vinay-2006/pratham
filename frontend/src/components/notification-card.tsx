@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from "react";
-import { Check, HelpCircle, X, Clock, Plus, ChevronRight, AlertTriangle } from "lucide-react";
+import { Check, HelpCircle, X, Clock, Plus, ChevronRight, AlertTriangle, FileText } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import axios from "axios";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -446,6 +447,16 @@ function PatientDetailDialog({
               </Section>
             )}
 
+            {/* View Report link — available for all patients */}
+            <div className="mt-2 border-t border-border/40 pt-4">
+              <Button asChild size="sm" variant="outline" className="w-full">
+                <Link to="/doctor/report/$intakeId" params={{ intakeId: n.intake_id }}>
+                  <FileText className="mr-1.5 h-3.5 w-3.5" />
+                  View Clinical Intelligence Report
+                </Link>
+              </Button>
+            </div>
+
           </div>
         </div>
       </DialogContent>
@@ -581,6 +592,14 @@ export function NotificationCard({ n }: { n: DoctorNotification }) {
                   System-generated · No nurse manually forwarded this request.
                 </p>
               )}
+              <div className="pt-2" onClick={(e) => e.stopPropagation()}>
+                <Button asChild size="sm" variant="outline">
+                  <Link to="/doctor/report/$intakeId" params={{ intakeId: n.intake_id }}>
+                    <FileText className="mr-1.5 h-3.5 w-3.5" />
+                    View Report
+                  </Link>
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>

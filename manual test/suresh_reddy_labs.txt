@@ -1,0 +1,5 @@
+WBC: 18.6 x10^9/L
+CRP: 116 mg/L
+ESR: 72 mm/hr
+Procalcitonin: 8.2 ng/mL
+ABG: PaO2 58 mmHg

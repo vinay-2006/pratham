@@ -7,11 +7,11 @@ import {
   ClipboardCheck,
   ClipboardList,
   FileImage,
+  FileText,
   FlaskConical,
   LayoutDashboard,
   ShieldAlert,
   Stethoscope,
-  Upload,
   Users,
 } from "lucide-react";
 import {
@@ -35,7 +35,6 @@ const nurseGroups = [
       { title: "Dashboard", url: "/nurse/dashboard", icon: LayoutDashboard },
       { title: "Emergency Intake", url: "/nurse/intake", icon: Ambulance },
       { title: "Patient Queue", url: "/nurse/queue", icon: Users },
-      { title: "Evidence Upload", url: "/evidence", icon: Upload },
       { title: "Investigations", url: "/investigations", icon: ClipboardList },
     ],
   },
@@ -47,7 +46,9 @@ const doctorGroups = [
     items: [
       { title: "Dashboard", url: "/doctor/dashboard", icon: LayoutDashboard },
       { title: "Approvals", url: "/doctor/approvals", icon: ClipboardCheck, badgeKey: "pending" as const },
+      { title: "Patient Queue", url: "/nurse/queue", icon: Users },
       { title: "Patient Review", url: "/doctor/review", icon: Stethoscope },
+      { title: "Clinical Report", url: "/doctor/report/latest", icon: FileText },
     ],
   },
   {
