@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 
-from app.api import intake, nlp, risk, investigation, imaging, labs, aggregation, investigations, evidence, lab_analysis, imaging_analysis, report, pipeline, admin, command_center, explainability, search, copilot
+from app.api import intake, nlp, risk, investigation, imaging, labs, aggregation, investigations, evidence, lab_analysis, imaging_analysis, report, pipeline, admin, command_center, explainability, search, copilot, demo, platform_metrics, release
 from app.ml.lab_model import load_lab_model
 from app.ml.imaging_model import load_imaging_model
 
@@ -31,6 +31,14 @@ validate_startup_config()
 async def lifespan(app: FastAPI):
     """Startup and shutdown logic."""
     log_event("PRATHAM Backend starting up...", level=logging.INFO)
+    
+    # Compute and cache repository metrics on startup
+    try:
+        from app.api.platform_metrics import scan_and_cache_metrics
+        scan_and_cache_metrics(app)
+    except Exception as exc:
+        log_event(f"WARNING: Metrics caching failed: {exc}", level=logging.WARNING)
+
     # Load XGBoost cardiac model + SHAP explainer once at startup
     try:
         load_lab_model()
@@ -167,6 +175,9 @@ app.include_router(command_center.router, prefix="/api", tags=["Command Center"]
 app.include_router(explainability.router, prefix="/api", tags=["Explainability Explorer"])
 app.include_router(search.router, prefix="/api", tags=["Clinical Search"])
 app.include_router(copilot.router, prefix="/api/copilot", tags=["Clinical Copilot"])
+app.include_router(demo.router, prefix="/api/demo", tags=["Demo Management"])
+app.include_router(platform_metrics.router, prefix="/api/platform-metrics", tags=["Platform Telemetry"])
+app.include_router(release.router, prefix="/api/release", tags=["Release Details"])
 
 
 # ── Health, Readiness, Metrics & Version ─────────────────────────────────────

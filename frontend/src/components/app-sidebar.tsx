@@ -102,11 +102,21 @@ const doctorGroups: NavGroup[] = [
   },
 ];
 
+const showcaseGroup: NavGroup = {
+  label: "Showcase & Portfolio",
+  items: [
+    { title: "SaaS Landing Page", url: "/", icon: Activity },
+    { title: "Knowledge Base", url: "/knowledge", icon: BookOpen },
+    { title: "Architecture", url: "/architecture", icon: Layers },
+    { title: "Admin Telemetry", url: "/admin", icon: LayoutDashboard },
+  ],
+};
+
 export function AppSidebar() {
   const { role, pendingCount } = useCase();
   const currentPath = useRouterState({ select: (s) => s.location.pathname });
   const isActive = (p: string) => currentPath === p;
-  const groups = role === "doctor" ? doctorGroups : nurseGroups;
+  const groups = [...(role === "doctor" ? doctorGroups : nurseGroups), showcaseGroup];
 
   // Lightweight queue stats for sidebar badge
   const { data: queueStats } = useQuery({
