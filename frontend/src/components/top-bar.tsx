@@ -1,14 +1,17 @@
-import { Bell, Moon, Siren, Sun, UserRound } from "lucide-react";
+import { useState } from "react";
+import { Bell, Brain, Moon, Siren, Sparkles, Sun, UserRound } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useCase, type Role } from "@/lib/case-store";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
 import { EvidenceCompletenessPill } from "@/components/evidence-completeness-pill";
+import { CopilotAssistantDrawer } from "@/components/copilot-assistant-drawer";
 import { cn } from "@/lib/utils";
 
 export function TopBar() {
   const navigate = useNavigate();
+  const [copilotOpen, setCopilotOpen] = useState(false);
   const {
     patientCase,
     theme,
@@ -29,64 +32,83 @@ export function TopBar() {
   };
 
   return (
-    <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background/85 px-3 backdrop-blur md:px-5">
-      <SidebarTrigger />
-      <Separator orientation="vertical" className="h-6" />
+    <>
+      <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background/85 px-3 backdrop-blur md:px-5">
+        <SidebarTrigger />
+        <Separator orientation="vertical" className="h-6" />
 
-      <RoleSwitcher role={role} onChange={handleRoleChange} />
+        <RoleSwitcher role={role} onChange={handleRoleChange} />
 
-      <Separator orientation="vertical" className="hidden h-6 md:block" />
+        <Separator orientation="vertical" className="hidden h-6 md:block" />
 
-      {patientCase ? (
-        <div className="hidden items-center gap-2 md:flex">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted">
-            <UserRound className="h-3.5 w-3.5 text-muted-foreground" />
+        {patientCase ? (
+          <div className="hidden items-center gap-2 md:flex">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted">
+              <UserRound className="h-3.5 w-3.5 text-muted-foreground" />
+            </div>
+            <div className="flex flex-col leading-tight">
+              <span className="text-xs font-medium">
+                {patientCase.patient.name} · {patientCase.patient.age}{patientCase.patient.sex}
+              </span>
+              <span className="text-[10px] text-muted-foreground">
+                Arrival {patientCase.patient.arrival} · ETA {patientCase.patient.eta}
+              </span>
+            </div>
           </div>
-          <div className="flex flex-col leading-tight">
-            <span className="text-xs font-medium">
-              {patientCase.patient.name} · {patientCase.patient.age}{patientCase.patient.sex}
-            </span>
-            <span className="text-[10px] text-muted-foreground">
-              Arrival {patientCase.patient.arrival} · ETA {patientCase.patient.eta}
-            </span>
+        ) : (
+          <div className="hidden items-center gap-2 md:flex">
+            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted">
+              <UserRound className="h-3.5 w-3.5 text-muted-foreground" />
+            </div>
+            <span className="text-xs text-muted-foreground">No patient selected</span>
           </div>
+        )}
+
+        <div className="ml-auto flex items-center gap-2">
+          {/* Ask Clinical Copilot Button */}
+          <button
+            onClick={() => setCopilotOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 hover:bg-primary/20 px-3 py-1.5 text-xs font-bold text-primary transition-colors shadow-sm"
+          >
+            <Brain className="h-3.5 w-3.5 text-primary" />
+            <span className="hidden sm:inline">Ask Copilot</span>
+            <Sparkles className="h-3 w-3 text-amber-500" />
+          </button>
+
+          <Counter
+            icon={Siren}
+            label="Active"
+            value={activeEmergencyCount}
+            tone="high"
+          />
+          <Link
+            to={role === "doctor" ? "/doctor/approvals" : "/nurse/dashboard"}
+            className="hidden sm:block"
+          >
+            <Counter icon={Bell} label="Pending" value={pendingCount} tone="primary" />
+          </Link>
+
+          {patientCase && <EvidenceCompletenessPill level={patientCase.evidenceCompleteness} />}
+
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Toggle theme"
+            onClick={toggleTheme}
+            className="h-8 w-8"
+          >
+            {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </Button>
         </div>
-      ) : (
-        <div className="hidden items-center gap-2 md:flex">
-          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted">
-            <UserRound className="h-3.5 w-3.5 text-muted-foreground" />
-          </div>
-          <span className="text-xs text-muted-foreground">No patient selected</span>
-        </div>
-      )}
+      </header>
 
-      <div className="ml-auto flex items-center gap-2">
-        <Counter
-          icon={Siren}
-          label="Active"
-          value={activeEmergencyCount}
-          tone="high"
-        />
-        <Link
-          to={role === "doctor" ? "/doctor/approvals" : "/nurse/dashboard"}
-          className="hidden sm:block"
-        >
-          <Counter icon={Bell} label="Pending" value={pendingCount} tone="primary" />
-        </Link>
-
-        {patientCase && <EvidenceCompletenessPill level={patientCase.evidenceCompleteness} />}
-
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Toggle theme"
-          onClick={toggleTheme}
-          className="h-8 w-8"
-        >
-          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
-        </Button>
-      </div>
-    </header>
+      {/* Render Copilot Assistant Drawer */}
+      <CopilotAssistantDrawer
+        isOpen={copilotOpen}
+        onClose={() => setCopilotOpen(false)}
+        intakeId={patientCase?.id || "INT-100"}
+      />
+    </>
   );
 }
 

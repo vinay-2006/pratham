@@ -59,6 +59,7 @@ const nurseGroups: NavGroup[] = [
   {
     label: "Hospital Platform",
     items: [
+      { title: "AI Copilot", url: "/copilot", icon: Brain },
       { title: "ED Command Center", url: "/command-center", icon: Activity },
       { title: "Clinical Search", url: "/search", icon: Search },
       { title: "Admin Telemetry", url: "/admin", icon: LayoutDashboard },
@@ -81,6 +82,7 @@ const doctorGroups: NavGroup[] = [
     label: "Clinical intelligence",
     items: [
       { title: "Operational Risk", url: "/dashboard", icon: Bell },
+      { title: "AI Copilot", url: "/copilot", icon: Brain },
       { title: "Imaging Analysis", url: "/imaging", icon: FileImage },
       { title: "Differential", url: "/differential", icon: FlaskConical },
       { title: "Explainability", url: "/explainability", icon: Brain },

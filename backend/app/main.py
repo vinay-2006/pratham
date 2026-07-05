@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 
-from app.api import intake, nlp, risk, investigation, imaging, labs, aggregation, investigations, evidence, lab_analysis, imaging_analysis, report, pipeline, admin, command_center, explainability, search
+from app.api import intake, nlp, risk, investigation, imaging, labs, aggregation, investigations, evidence, lab_analysis, imaging_analysis, report, pipeline, admin, command_center, explainability, search, copilot
 from app.ml.lab_model import load_lab_model
 from app.ml.imaging_model import load_imaging_model
 
@@ -104,6 +104,7 @@ app.include_router(admin.router, prefix="/api", tags=["Admin Telemetry"])
 app.include_router(command_center.router, prefix="/api", tags=["Command Center"])
 app.include_router(explainability.router, prefix="/api", tags=["Explainability Explorer"])
 app.include_router(search.router, prefix="/api", tags=["Clinical Search"])
+app.include_router(copilot.router, prefix="/api/copilot", tags=["Clinical Copilot"])
 
 
 # ── Health Check ─────────────────────────────────────────────────────────────
