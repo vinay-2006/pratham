@@ -119,7 +119,6 @@ export function InvestigationUploadRow({ intakeId, investigation, onUploaded }: 
   const isPending = status === "pending_approval";
   const isNeedsInfo = status === "needs_info";
   const hasFiles = evidence.length > 0;
-  const canAnalyze = isApproved && hasFiles && !analysis_result && (evidence_type === "xray" || evidence_type === "lab_report");
 
   const handleFile = async (file: File) => {
     if (!file) return;

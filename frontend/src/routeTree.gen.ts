@@ -11,7 +11,9 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppSearchRouteImport } from './routes/_app.search'
 import { Route as AppReviewRouteImport } from './routes/_app.review'
+import { Route as AppKnowledgeRouteImport } from './routes/_app.knowledge'
 import { Route as AppInvestigationsRouteImport } from './routes/_app.investigations'
 import { Route as AppIntakeRouteImport } from './routes/_app.intake'
 import { Route as AppImagingRouteImport } from './routes/_app.imaging'
@@ -19,7 +21,12 @@ import { Route as AppExplainabilityRouteImport } from './routes/_app.explainabil
 import { Route as AppEvidenceRouteImport } from './routes/_app.evidence'
 import { Route as AppDifferentialRouteImport } from './routes/_app.differential'
 import { Route as AppDashboardRouteImport } from './routes/_app.dashboard'
+import { Route as AppCopilotRouteImport } from './routes/_app.copilot'
 import { Route as AppConfidenceRouteImport } from './routes/_app.confidence'
+import { Route as AppComparisonRouteImport } from './routes/_app.comparison'
+import { Route as AppCommandCenterRouteImport } from './routes/_app.command-center'
+import { Route as AppArchitectureRouteImport } from './routes/_app.architecture'
+import { Route as AppAdminRouteImport } from './routes/_app.admin'
 import { Route as AppNurseQueueRouteImport } from './routes/_app.nurse.queue'
 import { Route as AppNurseIntakeRouteImport } from './routes/_app.nurse.intake'
 import { Route as AppNurseDashboardRouteImport } from './routes/_app.nurse.dashboard'
@@ -38,9 +45,19 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AppSearchRoute = AppSearchRouteImport.update({
+  id: '/search',
+  path: '/search',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppReviewRoute = AppReviewRouteImport.update({
   id: '/review',
   path: '/review',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppKnowledgeRoute = AppKnowledgeRouteImport.update({
+  id: '/knowledge',
+  path: '/knowledge',
   getParentRoute: () => AppRoute,
 } as any)
 const AppInvestigationsRoute = AppInvestigationsRouteImport.update({
@@ -78,9 +95,34 @@ const AppDashboardRoute = AppDashboardRouteImport.update({
   path: '/dashboard',
   getParentRoute: () => AppRoute,
 } as any)
+const AppCopilotRoute = AppCopilotRouteImport.update({
+  id: '/copilot',
+  path: '/copilot',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppConfidenceRoute = AppConfidenceRouteImport.update({
   id: '/confidence',
   path: '/confidence',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppComparisonRoute = AppComparisonRouteImport.update({
+  id: '/comparison',
+  path: '/comparison',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCommandCenterRoute = AppCommandCenterRouteImport.update({
+  id: '/command-center',
+  path: '/command-center',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppArchitectureRoute = AppArchitectureRouteImport.update({
+  id: '/architecture',
+  path: '/architecture',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppAdminRoute = AppAdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => AppRoute,
 } as any)
 const AppNurseQueueRoute = AppNurseQueueRouteImport.update({
@@ -126,7 +168,12 @@ const AppDoctorReportIntakeIdRoute = AppDoctorReportIntakeIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AppAdminRoute
+  '/architecture': typeof AppArchitectureRoute
+  '/command-center': typeof AppCommandCenterRoute
+  '/comparison': typeof AppComparisonRoute
   '/confidence': typeof AppConfidenceRoute
+  '/copilot': typeof AppCopilotRoute
   '/dashboard': typeof AppDashboardRoute
   '/differential': typeof AppDifferentialRoute
   '/evidence': typeof AppEvidenceRoute
@@ -134,7 +181,9 @@ export interface FileRoutesByFullPath {
   '/imaging': typeof AppImagingRoute
   '/intake': typeof AppIntakeRoute
   '/investigations': typeof AppInvestigationsRoute
+  '/knowledge': typeof AppKnowledgeRoute
   '/review': typeof AppReviewRoute
+  '/search': typeof AppSearchRoute
   '/doctor/approvals': typeof AppDoctorApprovalsRoute
   '/doctor/dashboard': typeof AppDoctorDashboardRoute
   '/doctor/review': typeof AppDoctorReviewRoute
@@ -146,7 +195,12 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin': typeof AppAdminRoute
+  '/architecture': typeof AppArchitectureRoute
+  '/command-center': typeof AppCommandCenterRoute
+  '/comparison': typeof AppComparisonRoute
   '/confidence': typeof AppConfidenceRoute
+  '/copilot': typeof AppCopilotRoute
   '/dashboard': typeof AppDashboardRoute
   '/differential': typeof AppDifferentialRoute
   '/evidence': typeof AppEvidenceRoute
@@ -154,7 +208,9 @@ export interface FileRoutesByTo {
   '/imaging': typeof AppImagingRoute
   '/intake': typeof AppIntakeRoute
   '/investigations': typeof AppInvestigationsRoute
+  '/knowledge': typeof AppKnowledgeRoute
   '/review': typeof AppReviewRoute
+  '/search': typeof AppSearchRoute
   '/doctor/approvals': typeof AppDoctorApprovalsRoute
   '/doctor/dashboard': typeof AppDoctorDashboardRoute
   '/doctor/review': typeof AppDoctorReviewRoute
@@ -168,7 +224,12 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_app': typeof AppRouteWithChildren
+  '/_app/admin': typeof AppAdminRoute
+  '/_app/architecture': typeof AppArchitectureRoute
+  '/_app/command-center': typeof AppCommandCenterRoute
+  '/_app/comparison': typeof AppComparisonRoute
   '/_app/confidence': typeof AppConfidenceRoute
+  '/_app/copilot': typeof AppCopilotRoute
   '/_app/dashboard': typeof AppDashboardRoute
   '/_app/differential': typeof AppDifferentialRoute
   '/_app/evidence': typeof AppEvidenceRoute
@@ -176,7 +237,9 @@ export interface FileRoutesById {
   '/_app/imaging': typeof AppImagingRoute
   '/_app/intake': typeof AppIntakeRoute
   '/_app/investigations': typeof AppInvestigationsRoute
+  '/_app/knowledge': typeof AppKnowledgeRoute
   '/_app/review': typeof AppReviewRoute
+  '/_app/search': typeof AppSearchRoute
   '/_app/doctor/approvals': typeof AppDoctorApprovalsRoute
   '/_app/doctor/dashboard': typeof AppDoctorDashboardRoute
   '/_app/doctor/review': typeof AppDoctorReviewRoute
@@ -190,7 +253,12 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/admin'
+    | '/architecture'
+    | '/command-center'
+    | '/comparison'
     | '/confidence'
+    | '/copilot'
     | '/dashboard'
     | '/differential'
     | '/evidence'
@@ -198,7 +266,9 @@ export interface FileRouteTypes {
     | '/imaging'
     | '/intake'
     | '/investigations'
+    | '/knowledge'
     | '/review'
+    | '/search'
     | '/doctor/approvals'
     | '/doctor/dashboard'
     | '/doctor/review'
@@ -210,7 +280,12 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/admin'
+    | '/architecture'
+    | '/command-center'
+    | '/comparison'
     | '/confidence'
+    | '/copilot'
     | '/dashboard'
     | '/differential'
     | '/evidence'
@@ -218,7 +293,9 @@ export interface FileRouteTypes {
     | '/imaging'
     | '/intake'
     | '/investigations'
+    | '/knowledge'
     | '/review'
+    | '/search'
     | '/doctor/approvals'
     | '/doctor/dashboard'
     | '/doctor/review'
@@ -231,7 +308,12 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_app'
+    | '/_app/admin'
+    | '/_app/architecture'
+    | '/_app/command-center'
+    | '/_app/comparison'
     | '/_app/confidence'
+    | '/_app/copilot'
     | '/_app/dashboard'
     | '/_app/differential'
     | '/_app/evidence'
@@ -239,7 +321,9 @@ export interface FileRouteTypes {
     | '/_app/imaging'
     | '/_app/intake'
     | '/_app/investigations'
+    | '/_app/knowledge'
     | '/_app/review'
+    | '/_app/search'
     | '/_app/doctor/approvals'
     | '/_app/doctor/dashboard'
     | '/_app/doctor/review'
@@ -271,11 +355,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_app/search': {
+      id: '/_app/search'
+      path: '/search'
+      fullPath: '/search'
+      preLoaderRoute: typeof AppSearchRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/review': {
       id: '/_app/review'
       path: '/review'
       fullPath: '/review'
       preLoaderRoute: typeof AppReviewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/knowledge': {
+      id: '/_app/knowledge'
+      path: '/knowledge'
+      fullPath: '/knowledge'
+      preLoaderRoute: typeof AppKnowledgeRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/investigations': {
@@ -327,11 +425,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppDashboardRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/copilot': {
+      id: '/_app/copilot'
+      path: '/copilot'
+      fullPath: '/copilot'
+      preLoaderRoute: typeof AppCopilotRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/confidence': {
       id: '/_app/confidence'
       path: '/confidence'
       fullPath: '/confidence'
       preLoaderRoute: typeof AppConfidenceRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/comparison': {
+      id: '/_app/comparison'
+      path: '/comparison'
+      fullPath: '/comparison'
+      preLoaderRoute: typeof AppComparisonRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/command-center': {
+      id: '/_app/command-center'
+      path: '/command-center'
+      fullPath: '/command-center'
+      preLoaderRoute: typeof AppCommandCenterRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/architecture': {
+      id: '/_app/architecture'
+      path: '/architecture'
+      fullPath: '/architecture'
+      preLoaderRoute: typeof AppArchitectureRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/admin': {
+      id: '/_app/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AppAdminRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/nurse/queue': {
@@ -394,7 +527,12 @@ declare module '@tanstack/react-router' {
 }
 
 interface AppRouteChildren {
+  AppAdminRoute: typeof AppAdminRoute
+  AppArchitectureRoute: typeof AppArchitectureRoute
+  AppCommandCenterRoute: typeof AppCommandCenterRoute
+  AppComparisonRoute: typeof AppComparisonRoute
   AppConfidenceRoute: typeof AppConfidenceRoute
+  AppCopilotRoute: typeof AppCopilotRoute
   AppDashboardRoute: typeof AppDashboardRoute
   AppDifferentialRoute: typeof AppDifferentialRoute
   AppEvidenceRoute: typeof AppEvidenceRoute
@@ -402,7 +540,9 @@ interface AppRouteChildren {
   AppImagingRoute: typeof AppImagingRoute
   AppIntakeRoute: typeof AppIntakeRoute
   AppInvestigationsRoute: typeof AppInvestigationsRoute
+  AppKnowledgeRoute: typeof AppKnowledgeRoute
   AppReviewRoute: typeof AppReviewRoute
+  AppSearchRoute: typeof AppSearchRoute
   AppDoctorApprovalsRoute: typeof AppDoctorApprovalsRoute
   AppDoctorDashboardRoute: typeof AppDoctorDashboardRoute
   AppDoctorReviewRoute: typeof AppDoctorReviewRoute
@@ -414,7 +554,12 @@ interface AppRouteChildren {
 }
 
 const AppRouteChildren: AppRouteChildren = {
+  AppAdminRoute: AppAdminRoute,
+  AppArchitectureRoute: AppArchitectureRoute,
+  AppCommandCenterRoute: AppCommandCenterRoute,
+  AppComparisonRoute: AppComparisonRoute,
   AppConfidenceRoute: AppConfidenceRoute,
+  AppCopilotRoute: AppCopilotRoute,
   AppDashboardRoute: AppDashboardRoute,
   AppDifferentialRoute: AppDifferentialRoute,
   AppEvidenceRoute: AppEvidenceRoute,
@@ -422,7 +567,9 @@ const AppRouteChildren: AppRouteChildren = {
   AppImagingRoute: AppImagingRoute,
   AppIntakeRoute: AppIntakeRoute,
   AppInvestigationsRoute: AppInvestigationsRoute,
+  AppKnowledgeRoute: AppKnowledgeRoute,
   AppReviewRoute: AppReviewRoute,
+  AppSearchRoute: AppSearchRoute,
   AppDoctorApprovalsRoute: AppDoctorApprovalsRoute,
   AppDoctorDashboardRoute: AppDoctorDashboardRoute,
   AppDoctorReviewRoute: AppDoctorReviewRoute,
