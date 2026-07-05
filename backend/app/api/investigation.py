@@ -46,13 +46,18 @@ class InvestigationResponse(BaseModel):
     generated_at: str
 
 
-@router.post("/recommend", response_model=InvestigationResponse)
+from app.core.logging_service import log_event
+import logging
+
+
+@router.post("/recommend", response_model=InvestigationResponse, deprecated=True)
 async def recommend_investigations(payload: InvestigationRequest) -> InvestigationResponse:
     """
     Recommend an investigation panel based on patient presentation and risk.
 
-    Stub response — clinical decision logic pending.
+    [DEPRECATED] Stub response — clinical decision logic pending.
     """
+    log_event("Deprecated /investigation/recommend stub endpoint invoked", level=logging.WARNING, pipeline_stage="DEPRECATED")
     from datetime import datetime
 
     return InvestigationResponse(

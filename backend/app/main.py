@@ -16,30 +16,38 @@ from app.api import intake, nlp, risk, investigation, imaging, labs, aggregation
 from app.ml.lab_model import load_lab_model
 from app.ml.imaging_model import load_imaging_model
 
+from app.core.config_validator import validate_startup_config
+from app.core.logging_service import log_event
+import logging
+import uuid
+import time
+from typing import Any
+
 load_dotenv()
+validate_startup_config()
 
 # ── Lifespan ────────────────────────────────────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown logic."""
-    print("[PRATHAM] Backend starting up...")
+    log_event("PRATHAM Backend starting up...", level=logging.INFO)
     # Load XGBoost cardiac model + SHAP explainer once at startup
     try:
         load_lab_model()
-        print("[PRATHAM] XGBoost cardiac model loaded.")
+        log_event("XGBoost cardiac model loaded.", level=logging.INFO)
     except Exception as exc:
-        print(f"[PRATHAM] WARNING: Lab model failed to load: {exc}")
+        log_event(f"WARNING: Lab model failed to load: {exc}", level=logging.WARNING)
     # Load EfficientNetB0 pneumonia model — fail fast if missing
     try:
         load_imaging_model()
-        print("[PRATHAM] EfficientNetB0 imaging model loaded.")
+        log_event("EfficientNetB0 imaging model loaded.", level=logging.INFO)
     except FileNotFoundError as exc:
-        print(f"[PRATHAM] FATAL: Imaging model file not found: {exc}")
+        log_event(f"FATAL: Imaging model file not found: {exc}", level=logging.CRITICAL)
         raise SystemExit(1)
     except Exception as exc:
-        print(f"[PRATHAM] WARNING: Imaging model failed to load: {exc}")
+        log_event(f"WARNING: Imaging model failed to load: {exc}", level=logging.WARNING)
     yield
-    print("[PRATHAM] Backend shutting down...")
+    log_event("PRATHAM Backend shutting down...", level=logging.INFO)
 
 
 # ── App Factory ─────────────────────────────────────────────────────────────
@@ -50,9 +58,63 @@ app = FastAPI(
         "Provides emergency intake, NLP extraction, risk scoring, investigation "
         "recommendations, imaging analysis, lab processing, and evidence aggregation."
     ),
-    version="0.1.0",
+    version="4.0.0",
     lifespan=lifespan,
 )
+
+
+# ── Structured Logging Middleware ───────────────────────────────────────────
+@app.middleware("http")
+async def structured_logging_middleware(request: Request, call_next):
+    request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    start_time = time.time()
+    
+    path = request.url.path
+    patient_id = None
+    if "patient/" in path:
+        parts = path.split("patient/")
+        if len(parts) > 1:
+            patient_id = parts[1].split("/")[0]
+    elif "status/" in path:
+        parts = path.split("status/")
+        if len(parts) > 1:
+            patient_id = parts[1].split("/")[0]
+
+    response = await call_next(request)
+    
+    duration_ms = (time.time() - start_time) * 1000.0
+    response.headers["X-Request-ID"] = request_id
+    
+    log_event(
+        message=f"{request.method} {path} completed with status {response.status_code}",
+        level=logging.INFO,
+        request_id=request_id,
+        patient_id=patient_id,
+        pipeline_stage=path.split("/")[1] if len(path.split("/")) > 1 else "ROOT",
+        duration_ms=duration_ms
+    )
+    
+    return response
+
+
+# ── Global Server Error Exception Handler ───────────────────────────────────
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    log_event(
+        message=f"Unhandled Server Error on {request.method} {request.url.path}: {exc}",
+        level=logging.ERROR,
+        request_id=request_id,
+        pipeline_stage="UNHANDLED_EXCEPTION"
+    )
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "An internal server error occurred.",
+            "request_id": request_id,
+            "status": "error"
+        }
+    )
 
 
 # ── Convert Pydantic validation errors to 400 Bad Request ───────────────────
@@ -107,11 +169,84 @@ app.include_router(search.router, prefix="/api", tags=["Clinical Search"])
 app.include_router(copilot.router, prefix="/api/copilot", tags=["Clinical Copilot"])
 
 
-# ── Health Check ─────────────────────────────────────────────────────────────
+# ── Health, Readiness, Metrics & Version ─────────────────────────────────────
 @app.get("/health", tags=["Health"])
 async def health_check() -> dict[str, str]:
     """Liveness probe."""
     return {"status": "ok", "service": "PRATHAM Backend"}
+
+
+@app.get("/ready", tags=["Health"])
+async def readiness_probe() -> dict[str, str]:
+    """Verify Supabase database connection and Groq environment status."""
+    try:
+        from app.db.supabase_client import supabase
+        # Test database connection
+        supabase.table("patients").select("id").limit(1).execute()
+        # Test Groq key
+        groq_key = os.getenv("GROQ_API_KEY")
+        if not groq_key or len(groq_key) < 10:
+             raise Exception("Invalid GROQ_API_KEY configuration")
+        return {"status": "ready", "database": "connected", "groq_api": "active"}
+    except Exception as exc:
+        raise HTTPException(status_code=503, detail=f"Service Unavailable: {exc}")
+
+
+@app.get("/metrics", tags=["Health"])
+async def metrics_endpoint() -> dict[str, Any]:
+    """Observability telemetry exposing average pipeline stage latencies."""
+    try:
+        from app.db.supabase_client import supabase
+        res = supabase.table("pipeline_status").select("stage, duration_ms, status").execute()
+        
+        stages_data = res.data or []
+        stage_metrics = {}
+        stage_counts = {}
+        
+        for item in stages_data:
+            stage = item.get("stage")
+            duration = item.get("duration_ms")
+            status = item.get("status")
+            if stage and duration is not None and status == "completed":
+                stage_metrics[stage] = stage_metrics.get(stage, 0.0) + duration
+                stage_counts[stage] = stage_counts.get(stage, 0) + 1
+        
+        averages = {}
+        for stage in ["nlp", "risk", "lab", "imaging", "aggregation"]:
+            total_duration = stage_metrics.get(stage, 0.0)
+            count = stage_counts.get(stage, 0)
+            averages[f"average_{stage}_latency_seconds"] = round((total_duration / count) / 1000.0, 2) if count > 0 else 0.0
+            averages[f"{stage}_execution_count"] = count
+
+        return {
+            "total_pipelines_tracked": len(stages_data) // 5,
+            "averages": averages,
+            "system_status": "OPERATIONAL"
+        }
+    except Exception as exc:
+        return {
+            "total_pipelines_tracked": 0,
+            "averages": {
+                "average_nlp_latency_seconds": 0.0,
+                "average_risk_latency_seconds": 0.0,
+                "average_lab_latency_seconds": 0.0,
+                "average_imaging_latency_seconds": 0.0,
+                "average_aggregation_latency_seconds": 0.0,
+            },
+            "system_status": "LIMITED_OFFLINE",
+            "info": f"Could not retrieve live metrics: {exc}"
+        }
+
+
+@app.get("/api/version", tags=["Version"])
+async def get_version_endpoint() -> dict[str, str]:
+    """Return platform metadata versioning information."""
+    return {
+        "version": "v4.0.0",
+        "api_spec_version": "v1.0",
+        "build_date": "2026-07-05",
+        "commit_hash": "5f0017d",
+    }
 
 
 @app.get("/", tags=["Health"])

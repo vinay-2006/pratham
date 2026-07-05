@@ -7,16 +7,20 @@ from __future__ import annotations
 from fastapi import APIRouter
 from app.models.evidence import LabRequest, LabResult, LabStatus
 
+from app.core.logging_service import log_event
+import logging
+
 router = APIRouter()
 
 
-@router.post("/labs", response_model=LabResult)
+@router.post("/labs", response_model=LabResult, deprecated=True)
 async def process_labs(payload: LabRequest) -> LabResult:
     """
     Process a lab panel and return flagged results.
 
-    Stub response — lab anomaly detection model pending.
+    [DEPRECATED] Stub response — lab anomaly detection model pending.
     """
+    log_event("Deprecated /evidence/labs stub endpoint invoked", level=logging.WARNING, pipeline_stage="DEPRECATED")
     import uuid
     from datetime import datetime
 

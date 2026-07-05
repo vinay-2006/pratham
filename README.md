@@ -1,133 +1,66 @@
 # PRATHAM — Predictive Risk Assessment & Triage for Healthcare AI Management
 
-> A full-stack medical AI platform for emergency patient intake, real-time risk stratification, intelligent investigation recommendations, and evidence aggregation.
+> **PRATHAM v4.0.0** is an enterprise-grade emergency department clinical AI platform providing real-time in-transit intake, NLP extraction, demographic-aware lab analytics, deterministic clinical scoring (NEWS2, qSOFA, Wells PE, HEART), and an interactive **Evidence-Aware Clinical & System Copilot**.
 
 ---
 
-## 🏥 Overview
+## 🏥 Architecture Overview
 
-PRATHAM is an AI-assisted clinical decision support system designed for emergency departments. It combines natural language processing, multi-modal evidence analysis (imaging + labs), and risk scoring to help clinicians triage patients faster and more accurately.
+PRATHAM uses a modular 7-layer design to prevent LLM hallucinations by isolating clinical calculations from generative synthesis.
 
-### Core Capabilities
-
-| Module | Description |
-|---|---|
-| **Emergency Intake** | Structured patient data capture with NLP-assisted symptom extraction |
-| **Risk Assessment** | Severity scoring based on vitals, history, and clinical flags |
-| **Investigation Panel** | AI-recommended diagnostic workups |
-| **Evidence Aggregation** | Unified view of X-ray, lab, and vitals findings |
-| **Feedback Log** | Clinician feedback loop for continuous model improvement |
+For in-depth guides, check the dedicated folders:
+- [Platform Architecture Specification](file:///d:/pratham/docs/Architecture.md)
+- [API Route Reference Sheet](file:///d:/pratham/docs/API_Reference.md)
+- [Staging & Production Deployment Guide](file:///d:/pratham/docs/Deployment_Guide.md)
+- [Local Developer Setup Guide](file:///d:/pratham/docs/Developer_Guide.md)
+- [Frequently Asked Questions (FAQ)](file:///d:/pratham/docs/FAQ.md)
 
 ---
 
-## 🗂️ Project Structure
+## 🚀 Quick Start
 
-```
-pratham/
-├── frontend/          # React + TypeScript + Tailwind CSS
-├── backend/           # FastAPI + Python 3.11
-├── notebooks/         # Colab training notebooks
-├── data/              # Test datasets
-├── ml_models/         # Trained model weights (.pt, .json)
-└── docker-compose.yml # Full-stack orchestration
-```
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-
-- Node.js >= 18
-- Python 3.11
-- Docker & Docker Compose (optional)
-- A Supabase project (URL + anon key)
-
-### Environment Setup
-
+### 1. Environment Setup
+Create a `.env` file in the root directory:
 ```bash
-cp .env.example .env
-# Fill in your SUPABASE_URL, SUPABASE_KEY, GROQ_API_KEY, FRONTEND_URL
+SUPABASE_URL="https://your-project.supabase.co"
+SUPABASE_ANON_KEY="your-anon-key"
+SUPABASE_SERVICE_ROLE_KEY="your-service-role-key"
+GROQ_API_KEY="your-groq-key"
+FRONTEND_URL="http://localhost:5173"
 ```
 
-### Backend
+### 2. Startup & Development
 
+#### Backend (FastAPI)
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+source venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload
+python run_migration.py
+uvicorn app.main:app --reload --port 8000
 ```
+- Swagger Docs available at: `http://localhost:8000/docs`
 
-Backend runs at: `http://localhost:8000`
-API docs at: `http://localhost:8000/docs`
-
-### Frontend
-
+#### Frontend (React + Vite)
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
+- Workspace runs at: `http://localhost:5173`
 
-Frontend runs at: `http://localhost:5173`
-
-### Docker (Full Stack)
-
+#### Docker Compose (Full Stack Staging)
 ```bash
-docker-compose up --build
+docker-compose up -d --build
 ```
 
 ---
 
-## 🔌 API Endpoints
+## 🧠 Platform Capabilities
 
-| Method | Endpoint | Description |
-|---|---|---|
-| POST | `/intake` | Submit patient intake form |
-| POST | `/nlp/extract` | Extract structured data from clinical notes |
-| POST | `/risk/assess` | Calculate patient risk score |
-| POST | `/investigation/recommend` | Get recommended investigations |
-| POST | `/evidence/xray` | Analyze X-ray findings |
-| POST | `/evidence/labs` | Process lab results |
-| POST | `/aggregate` | Aggregate all evidence into unified report |
-
----
-
-## 🧠 Technology Stack
-
-**Frontend**
-- React 18 + TypeScript
-- Tailwind CSS
-- React Router v6
-- Axios
-
-**Backend**
-- FastAPI
-- Pydantic v2 (strict typing)
-- Supabase PostgreSQL
-- Python 3.11
-
-**AI/ML** *(planned)*
-- Groq LLM API (NLP extraction)
-- Custom PyTorch models (imaging)
-- BERT-based clinical NER
-
----
-
-## 🗺️ Roadmap
-
-- [ ] NLP symptom extraction via Groq
-- [ ] Risk scoring ML model
-- [ ] CXR (Chest X-Ray) AI analysis
-- [ ] Lab value anomaly detection
-- [ ] Real-time websocket dashboard
-- [ ] FHIR R4 integration
-- [ ] Audit logging & compliance
-
----
-
-## 📄 License
-
-MIT License — see [LICENSE](LICENSE) for details.
+- **Clinical Copilot Assistant**: Dual-mode (Clinical & System) structured chat with interactive evidence replay and reasoning audits.
+- **Demographic Reference Ranges**: Dynamic age/sex thresholds for critical analytes.
+- **Multimodal Telemetry**: PyTorch imaging analysis & deterministic scoring calculators.
+- **Observability Probes**: Standardized `/health`, `/ready`, and `/metrics` JSON performance tracking.
+- **Audit Logs**: Traceable record schema logging pipeline stage latencies and subsystem states.
