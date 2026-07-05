@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
 
-from app.api import intake, nlp, risk, investigation, imaging, labs, aggregation, investigations, evidence, lab_analysis, imaging_analysis, report
+from app.api import intake, nlp, risk, investigation, imaging, labs, aggregation, investigations, evidence, lab_analysis, imaging_analysis, report, pipeline, admin, command_center, explainability, search
 from app.ml.lab_model import load_lab_model
 from app.ml.imaging_model import load_imaging_model
 
@@ -76,7 +76,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
 # Allow both the configured frontend URL and common local dev ports
-_cors_origins = list({frontend_url, "http://localhost:8080", "http://localhost:5173"})
+_cors_origins = list({frontend_url, "http://localhost:8080", "http://localhost:8081", "http://localhost:5173"})
 
 app.add_middleware(
     CORSMiddleware,
@@ -99,6 +99,11 @@ app.include_router(evidence.router, prefix="/api", tags=["Evidence Upload"])
 app.include_router(lab_analysis.router, prefix="/api", tags=["Lab Analysis"])
 app.include_router(imaging_analysis.router, prefix="/api", tags=["Imaging Analysis"])
 app.include_router(report.router, prefix="/api", tags=["Clinical Report"])
+app.include_router(pipeline.router, prefix="/api", tags=["Pipeline"])
+app.include_router(admin.router, prefix="/api", tags=["Admin Telemetry"])
+app.include_router(command_center.router, prefix="/api", tags=["Command Center"])
+app.include_router(explainability.router, prefix="/api", tags=["Explainability Explorer"])
+app.include_router(search.router, prefix="/api", tags=["Clinical Search"])
 
 
 # ── Health Check ─────────────────────────────────────────────────────────────

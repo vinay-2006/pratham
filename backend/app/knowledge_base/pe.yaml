@@ -1,0 +1,37 @@
+condition_key: "pe"
+condition_name: "Pulmonary Embolism"
+version: "1.2"
+priority: 1
+supporting_patterns:
+  - "respiratory_distress"
+  - "hemodynamic_instability"
+supporting_findings:
+  symptoms:
+    - "breathlessness"
+    - "chest_pain"
+  labs:
+    - analyte: "d_dimer"
+      status: "HIGH"
+
+conflicting_findings:
+  vitals:
+    - field: "temperature"
+      operator: ">"
+      threshold: 38.5
+      label: "High fever"
+
+monitoring_priorities:
+  - "Wells PE risk score calculation"
+  - "Continuous oxygen saturation monitoring"
+  - "Right ventricular strain monitoring"
+
+clinical_precautions:
+  - "High suspicion in acute dyspnea with elevated D-Dimer"
+  - "CT Pulmonary Angiogram recommended if Wells score > 4.0"
+  - "Anticoagulation precaution if bleeding risk present"
+
+suggested_investigations:
+  - "CT Chest / CTPA"
+  - "D-Dimer"
+  - "ABG"
+  - "ECG"

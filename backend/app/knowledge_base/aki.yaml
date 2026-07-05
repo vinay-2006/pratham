@@ -1,0 +1,39 @@
+condition_key: "aki"
+condition_name: "Acute Kidney Injury (AKI)"
+version: "2.0"
+priority: 1
+description: "Abrupt decrease in kidney function resulting in retention of urea and nitrogenous waste products."
+supporting_patterns:
+  - "renal_impairment"
+supporting_findings:
+  labs:
+    - analyte: "creatinine"
+      status: "HIGH"
+    - analyte: "bun"
+      status: "HIGH"
+    - analyte: "potassium"
+      status: "HIGH"
+conflicting_findings: []
+required_findings: []
+optional_findings:
+  - "oliguria"
+monitoring_priorities:
+  - "Strict hourly urine output measurement via Foley catheter"
+  - "Serial serum creatinine and BUN daily or q12h"
+  - "Continuous ECG for hyperkalemic changes"
+clinical_precautions:
+  - "Discontinue nephrotoxic medications (NSAIDs, ACE inhibitors, aminoglycosides)"
+  - "Adjust medication dosages for reduced GFR"
+  - "Assess volume status (prerenal hypovolemia vs intrinsic vs postrenal obstruction)"
+suggested_investigations:
+  - "Basic Metabolic Panel"
+  - "Urinalysis"
+  - "Renal Ultrasound"
+  - "Serum Electrolytes"
+limitations:
+  - "Creatinine rise lags behind acute GFR drop by 24-48 hours"
+evidence_weights:
+  pattern_weight: 30.0
+  symptom_weight: 10.0
+  lab_weight: 50.0
+  imaging_weight: 10.0

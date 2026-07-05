@@ -109,6 +109,23 @@ CREATE TABLE IF NOT EXISTS public.investigation_recommendations (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 9. PIPELINE STATUS (Task 14)
+CREATE TABLE IF NOT EXISTS public.pipeline_status (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    intake_id UUID NOT NULL REFERENCES public.emergency_intake(id) ON DELETE CASCADE,
+    stage TEXT NOT NULL CHECK (stage IN ('nlp', 'risk', 'lab', 'imaging', 'aggregation')),
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+    started_at TIMESTAMPTZ,
+    completed_at TIMESTAMPTZ,
+    duration_ms INTEGER,
+    error_message TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pipeline_stage ON public.pipeline_status(intake_id, stage);
+CREATE INDEX IF NOT EXISTS idx_pipeline_intake ON public.pipeline_status(intake_id);
+
 -- ============================================================
 -- Disable RLS on all tables (service_role key bypasses anyway)
 -- ============================================================
@@ -120,6 +137,7 @@ ALTER TABLE public.nlp_extractions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.risk_scores ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.preparation_alerts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.investigation_recommendations ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pipeline_status ENABLE ROW LEVEL SECURITY;
 
 -- Allow service_role full access
 CREATE POLICY "service_role_all" ON public.patients FOR ALL USING (true) WITH CHECK (true);
@@ -130,3 +148,5 @@ CREATE POLICY "service_role_all" ON public.nlp_extractions FOR ALL USING (true) 
 CREATE POLICY "service_role_all" ON public.risk_scores FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "service_role_all" ON public.preparation_alerts FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "service_role_all" ON public.investigation_recommendations FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "service_role_all" ON public.pipeline_status FOR ALL USING (true) WITH CHECK (true);
+

@@ -1,0 +1,46 @@
+condition_key: "asthma"
+condition_name: "Acute Asthma Exacerbation"
+version: "2.0"
+priority: 1
+description: "Acute airway bronchospasm and hyper-reactivity resulting in wheezing, dyspnea, and respiratory distress."
+supporting_patterns:
+  - "respiratory_distress"
+supporting_findings:
+  symptoms:
+    - "breathlessness"
+    - "wheezing"
+  vitals:
+    - field: "respiratory_rate"
+      operator: ">"
+      threshold: 22
+      label: "Tachypnea (>22/min)"
+    - field: "spo2"
+      operator: "<"
+      threshold: 94
+      label: "Hypoxemia (<94%)"
+conflicting_findings:
+  vitals:
+    - field: "temperature"
+      operator: ">"
+      threshold: 38.5
+      label: "High fever"
+  labs:
+    - analyte: "troponin"
+      status: "HIGH"
+required_findings:
+  - "breathlessness"
+optional_findings:
+  - "wheezing"
+monitoring_priorities:
+  - "Peak expiratory flow rate (PEFR) assessment"
+  - "Continuous SpO2 and work-of-breathing monitoring"
+clinical_precautions:
+  - "Monitor for silent chest indicative of impending respiratory failure"
+  - "Administer short-acting bronchodilators and systemic corticosteroids"
+suggested_investigations:
+  - "Peak Expiratory Flow"
+  - "Chest X-ray"
+  - "ABG"
+  - "CBC"
+limitations:
+  - "Normal SpO2 early in an attack does not rule out severe bronchospasm"

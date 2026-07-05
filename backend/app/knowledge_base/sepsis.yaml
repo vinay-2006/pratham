@@ -1,0 +1,41 @@
+condition_key: "sepsis"
+condition_name: "Sepsis / Severe Systemic Infection"
+version: "1.2"
+priority: 1
+supporting_patterns:
+  - "systemic_inflammation"
+  - "hemodynamic_instability"
+supporting_findings:
+  vitals:
+    - field: "temperature"
+      operator: ">"
+      threshold: 38.0
+      label: "Fever"
+    - field: "heart_rate"
+      operator: ">"
+      threshold: 90
+      label: "Tachycardia"
+  labs:
+    - analyte: "wbc"
+      status: "HIGH"
+
+conflicting_findings:
+  labs:
+    - analyte: "troponin"
+      status: "HIGH"
+
+monitoring_priorities:
+  - "qSOFA score assessment every 2 hours"
+  - "Strict fluid balance and mean arterial pressure (MAP) tracking"
+  - "Serial blood lactate measurements"
+
+clinical_precautions:
+  - "Initiate Sepsis Six protocol within 1 hour if qSOFA >= 2"
+  - "Obtain blood cultures before antimicrobial administration"
+  - "Prepare crystalloid fluid resuscitation"
+
+suggested_investigations:
+  - "Blood Cultures"
+  - "CBC"
+  - "Serum Lactate"
+  - "Urinalysis"

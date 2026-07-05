@@ -1,0 +1,40 @@
+condition_key: "seizure"
+condition_name: "Acute Seizure / Status Epilepticus"
+version: "2.0"
+priority: 1
+description: "Transient signs or symptoms due to abnormal excessive or synchronous neuronal activity in the brain."
+supporting_patterns: []
+supporting_findings:
+  symptoms:
+    - "unconsciousness"
+    - "neurological_symptoms"
+  labs:
+    - analyte: "sodium"
+      status: "LOW"
+    - analyte: "glucose"
+      status: "LOW"
+conflicting_findings: []
+required_findings:
+  - "unconsciousness"
+optional_findings:
+  - "post_ictal_confusion"
+monitoring_priorities:
+  - "Airway maintenance and suctioning capability"
+  - "Timing of seizure duration (prepare IV benzodiazepines if >5 min)"
+  - "Post-ictal GCS recovery tracking"
+clinical_precautions:
+  - "Ensure airway protection and lateral safety positioning"
+  - "Check capillary glucose to exclude hypoglycemic seizure"
+  - "Check antiepileptic drug levels if patient has known epilepsy history"
+suggested_investigations:
+  - "Blood Glucose"
+  - "Electrolytes"
+  - "CT Brain"
+  - "EEG"
+limitations:
+  - "Interictal EEG may be normal in epilepsy patients"
+evidence_weights:
+  pattern_weight: 15.0
+  symptom_weight: 45.0
+  lab_weight: 20.0
+  imaging_weight: 20.0

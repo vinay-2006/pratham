@@ -1,0 +1,53 @@
+condition_key: "arrhythmia"
+condition_name: "Cardiac Arrhythmia"
+version: "2.0"
+priority: 1
+description: "Abnormal cardiac rhythm including atrial fibrillation, supraventricular tachycardia, or ventricular ectopy."
+supporting_patterns:
+  - "hemodynamic_instability"
+supporting_findings:
+  symptoms:
+    - "chest_pain"
+  vitals:
+    - field: "heart_rate"
+      operator: ">"
+      threshold: 120
+      label: "Severe tachycardia (>120 bpm)"
+    - field: "heart_rate"
+      operator: "<"
+      threshold: 50
+      label: "Bradycardia (<50 bpm)"
+  labs:
+    - analyte: "potassium"
+      status: "HIGH"
+    - analyte: "potassium"
+      status: "LOW"
+conflicting_findings:
+  vitals:
+    - field: "temperature"
+      operator: ">"
+      threshold: 38.5
+      label: "High fever"
+required_findings: []
+optional_findings:
+  - "palpitations"
+monitoring_priorities:
+  - "Continuous ECG telemetry monitoring"
+  - "Frequent automated BP measurements"
+  - "Serum electrolyte monitoring (Potassium, Magnesium)"
+clinical_precautions:
+  - "Assess hemodynamic stability (BP, mental status)"
+  - "Evaluate risk of thromboembolism if Atrial Fibrillation present"
+  - "Prepare cardioversion pathway if patient is hemodynamically unstable"
+suggested_investigations:
+  - "12-Lead ECG"
+  - "Electrolytes"
+  - "Troponin"
+  - "Echocardiogram"
+limitations:
+  - "Single ECG may miss paroxysmal arrhythmias"
+evidence_weights:
+  pattern_weight: 25.0
+  symptom_weight: 20.0
+  lab_weight: 25.0
+  imaging_weight: 20.0

@@ -298,12 +298,14 @@ async def approve_investigations(data: ApprovalRequest) -> ApprovalResponse:
             )
 
         # 3. Insert custom tests as new approved records
+        from app.services.investigation_registry import normalize_investigation_name
         for custom_test in (data.custom_tests or []):
             if custom_test.strip():
+                normalized = normalize_investigation_name(custom_test)
                 _safe_insert(
                     "investigation_recommendations",
-                    {"intake_id": data.intake_id, "investigation_type": custom_test.strip(), "status": "approved", "approved_at": now, "approved_by": data.doctor_name, "review_notes": data.doctor_notes},
-                    {"intake_id": data.intake_id, "investigation_type": custom_test.strip(), "status": "approved"},
+                    {"intake_id": data.intake_id, "investigation_type": normalized, "status": "approved", "approved_at": now, "approved_by": data.doctor_name, "review_notes": data.doctor_notes},
+                    {"intake_id": data.intake_id, "investigation_type": normalized, "status": "approved"},
                 )
 
         # 4. Update emergency_intake status
@@ -571,7 +573,7 @@ async def get_patient_queue():
         result = (
             supabase.table("emergency_intake")
             .select(
-                "id, status, created_at, severity_level, "
+                "id, status, created_at, severity_level, chief_complaint, "
                 "patients(first_name, last_name, gender, date_of_birth), "
                 "risk_scores(overall_severity)"
             )
@@ -620,6 +622,10 @@ async def get_patient_queue():
             except Exception:
                 return set()
 
+        def _batch_pipeline():
+            from app.services.pipeline_status_service import get_batch_pipeline_status
+            return get_batch_pipeline_status(intake_ids)
+
         (
             all_investigations,
             all_evidence,
@@ -627,6 +633,7 @@ async def get_patient_queue():
             lab_set,
             imaging_set,
             agg_set,
+            pipeline_by_intake,
         ) = await asyncio.gather(
             asyncio.to_thread(_batch_investigations),
             asyncio.to_thread(_batch_evidence),
@@ -634,6 +641,7 @@ async def get_patient_queue():
             asyncio.to_thread(lambda: _batch_table("lab_results")),
             asyncio.to_thread(lambda: _batch_table("imaging_results")),
             asyncio.to_thread(lambda: _batch_table("aggregation_results")),
+            asyncio.to_thread(_batch_pipeline),
         )
 
         # ── Index batch results by intake_id ──────────────────────────────
@@ -716,13 +724,22 @@ async def get_patient_queue():
                     # (each file counts as one upload, capped at approved count)
                     evidence_uploaded = min(len(ev_rows), counts["approved"])
 
-            pipeline_status = {
-                "nlp": "completed" if iid in nlp_set else "pending",
-                "risk": "completed" if risk_row else "pending",
-                "lab": "completed" if iid in lab_set else "pending",
-                "imaging": "completed" if iid in imaging_set else "pending",
-                "aggregation": "completed" if iid in agg_set else "pending",
+            # Pipeline status from the real pipeline_status table (all 4 states)
+            pipeline_status = pipeline_by_intake.get(iid, {
+                "nlp": "pending", "risk": "pending", "lab": "pending",
+                "imaging": "pending", "aggregation": "pending",
+            })
+
+            # Workflow status (from dedicated service)
+            from app.services.workflow_service import compute_workflow_status
+            inv_counts_for_wf = {
+                "approved": counts["approved"],
+                "pending_approval": counts["pending_approval"],
+                "rejected": counts["rejected"],
+                "total": sum(counts.values()),
             }
+            ev_for_wf = {"uploaded": evidence_uploaded, "required": counts["approved"]}
+            workflow_status = compute_workflow_status(inv_counts_for_wf, ev_for_wf, pipeline_status)
 
             queue_items.append({
                 "intake_id": iid,
@@ -732,6 +749,9 @@ async def get_patient_queue():
                 "severity": severity,
                 "arrival_time": arrival,
                 "intake_status": intake.get("status", ""),
+                "chief_complaint": intake.get("chief_complaint", ""),
+                "created_at": intake.get("created_at", ""),
+                "workflow_status": workflow_status,
                 "investigation_counts": {
                     "approved": counts["approved"],
                     "pending": counts["pending_approval"],
@@ -750,6 +770,54 @@ async def get_patient_queue():
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── GET queue stats — lightweight badge data for sidebar ──────────────────────
+
+@router.get("/investigations/queue/stats", tags=["Investigations"])
+async def get_queue_stats():
+    """
+    Lightweight stats for sidebar badges.
+    Returns total patient count and how many have pending-approval investigations.
+    """
+    try:
+        # Total intakes
+        intake_res = (
+            supabase.table("emergency_intake")
+            .select("id")
+            .limit(500)
+            .execute()
+        )
+        total = len(intake_res.data or [])
+
+        # Intakes with at least one pending_approval investigation
+        pending_res = (
+            supabase.table("investigation_recommendations")
+            .select("intake_id")
+            .eq("status", "pending_approval")
+            .execute()
+        )
+        # Deduplicate by intake_id
+        pending_intake_ids = {r["intake_id"] for r in (pending_res.data or [])}
+
+        return {
+            "total_patients": total,
+            "pending_approval_patients": len(pending_intake_ids),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── GET patient timeline ──────────────────────────────────────────────────────
+
+@router.get("/investigations/patient/{intake_id}/timeline", tags=["Investigations"])
+async def get_patient_timeline(intake_id: str):
+    """
+    Patient journey timeline reconstructed from existing database timestamps.
+    Returns a chronologically sorted list of events.
+    """
+    from app.services.workflow_service import build_patient_timeline
+    return await asyncio.to_thread(build_patient_timeline, intake_id)
 
 
 # ── GET patient detail — full workspace data for a single intake ──────────────
@@ -998,14 +1066,19 @@ async def get_patient_detail(intake_id: str):
         risk_rows = intake.get("risk_scores") or []
         risk_row = risk_rows[0] if risk_rows else {}
 
-        # Build pipeline status (must be after risk_rows is assigned)
-        pipeline_status = {
-            "nlp": "completed" if nlp_result else "pending",
-            "risk": "completed" if risk_rows else "pending",
-            "lab": "completed" if lab_result else "pending",
-            "imaging": "completed" if imaging_result else "pending",
-            "aggregation": "completed" if aggregation_result else "pending",
-        }
+        # Pipeline status from the real pipeline_status table (shows running/failed)
+        from app.services.pipeline_status_service import get_pipeline_status_flat
+        try:
+            pipeline_status = get_pipeline_status_flat(intake_id)
+        except Exception:
+            # Graceful fallback if pipeline_status table is unreachable
+            pipeline_status = {
+                "nlp": "completed" if nlp_result else "pending",
+                "risk": "completed" if risk_rows else "pending",
+                "lab": "completed" if lab_result else "pending",
+                "imaging": "completed" if imaging_result else "pending",
+                "aggregation": "completed" if aggregation_result else "pending",
+            }
 
         name = _build_display_name(patient_row)
         gender = (patient_row.get("gender") or "").lower()
@@ -1088,3 +1161,67 @@ async def get_patient_detail(intake_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class AddInvestigationRequest(BaseModel):
+    intake_id: str
+    investigation_name: str
+    doctor_name: Optional[str] = "Doctor"
+    doctor_notes: Optional[str] = "Manually added by doctor"
+
+@router.post("/investigations/add", tags=["Investigations"])
+async def add_investigation(data: AddInvestigationRequest):
+    """
+    Doctor manually adds and approves an investigation for a patient.
+    Normalizes name, resolves aliases, inserts as approved with timestamp.
+    """
+    try:
+        from datetime import datetime, timezone
+        from app.services.investigation_registry import normalize_investigation_name
+        
+        raw_name = data.investigation_name.strip()
+        if not raw_name:
+            raise HTTPException(status_code=400, detail="Investigation name cannot be empty")
+            
+        now = datetime.now(timezone.utc).isoformat()
+        canonical_name = normalize_investigation_name(raw_name)
+        
+        # Check if already exists for this intake
+        existing = supabase.table("investigation_recommendations")\
+            .select("id, status")\
+            .eq("intake_id", data.intake_id)\
+            .eq("investigation_type", canonical_name)\
+            .execute()
+            
+        if existing.data:
+            row = supabase.table("investigation_recommendations").update({
+                "status": "approved",
+                "approved_at": now,
+                "approved_by": data.doctor_name,
+                "review_notes": data.doctor_notes
+            }).eq("intake_id", data.intake_id).eq("investigation_type", canonical_name).execute()
+        else:
+            row = supabase.table("investigation_recommendations").insert({
+                "intake_id": data.intake_id,
+                "investigation_type": canonical_name,
+                "status": "approved",
+                "approved_at": now,
+                "approved_by": data.doctor_name,
+                "review_notes": data.doctor_notes
+            }).execute()
+            
+        # Update emergency_intake status to ensure patient is in approved status if previously pending
+        supabase.table("emergency_intake").update({
+            "status": "investigation_approved",
+        }).eq("id", data.intake_id).execute()
+        
+        return {
+            "success": True,
+            "id": row.data[0]["id"] if row.data else None,
+            "canonical_name": canonical_name
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+

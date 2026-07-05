@@ -121,6 +121,33 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
                 detail=f"Symptoms save failed — entire intake rolled back. Error: {sym_err}",
             )
 
+        # ── PIPELINE INITIALIZATION (mandatory — abort intake on failure) ────
+        from app.services.pipeline_status_service import (
+            initialize_pipeline,
+            mark_running,
+            mark_completed,
+            mark_failed as pipeline_mark_failed,
+        )
+
+        try:
+            initialize_pipeline(intake_id)
+        except Exception as init_err:
+            print(f"[PRATHAM] Pipeline initialization failed — rolling back intake: {init_err}")
+            # Also clean up vitals + symptoms
+            try:
+                supabase.table("symptoms").delete().eq("intake_id", intake_id).execute()
+            except Exception:
+                pass
+            try:
+                supabase.table("vitals").delete().eq("intake_id", intake_id).execute()
+            except Exception:
+                pass
+            _rollback()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Pipeline initialization failed — intake aborted. Error: {init_err}",
+            )
+
         # ── AUTOMATED CLINICAL PIPELINE ──────────────────────────────────────
         from app.services.risk_service import (
             calculate_risk_scores,
@@ -134,6 +161,7 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
         # Step A: NLP extraction via Groq (graceful degradation if unavailable)
         nlp_flags: dict = {}
         nlp_summary = ""
+        mark_running(intake_id, "nlp")
         try:
             from app.services.nlp_service import extract_clinical_signals
             nlp_flags = extract_clinical_signals(
@@ -160,8 +188,20 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
                     nlp_row[flag_key] = nlp_flags[flag_key]
 
             supabase.table("nlp_extractions").insert(nlp_row).execute()
+            mark_completed(intake_id, "nlp")
         except Exception as nlp_err:
             print(f"[PRATHAM] NLP extraction failed (non-fatal): {nlp_err}")
+            # Record failure but do NOT re-raise — NLP uses graceful degradation
+            try:
+                supabase.table("pipeline_status").update({
+                    "status": "failed",
+                    "error_message": str(nlp_err),
+                    "updated_at": __import__("datetime").datetime.now(
+                        __import__("datetime").timezone.utc
+                    ).isoformat(),
+                }).eq("intake_id", intake_id).eq("stage", "nlp").execute()
+            except Exception:
+                pass
             # Fallback: derive flags directly from symptom booleans
             nlp_flags = {
                 "head_trauma": False,
@@ -177,17 +217,23 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
             nlp_summary = nlp_flags["clinical_summary"]
 
         # Step B: Risk scoring
-        risk_scores = calculate_risk_scores(vitals_dict, symptoms_dict, nlp_flags)
+        mark_running(intake_id, "risk")
+        try:
+            risk_scores = calculate_risk_scores(vitals_dict, symptoms_dict, nlp_flags)
 
-        supabase.table("risk_scores").insert({
-            "intake_id": intake_id,
-            **risk_scores,
-        }).execute()
+            supabase.table("risk_scores").insert({
+                "intake_id": intake_id,
+                **risk_scores,
+            }).execute()
 
-        # Update intake severity
-        supabase.table("emergency_intake").update({
-            "severity_level": risk_scores["overall_severity"],
-        }).eq("id", intake_id).execute()
+            # Update intake severity
+            supabase.table("emergency_intake").update({
+                "severity_level": risk_scores["overall_severity"],
+            }).eq("id", intake_id).execute()
+
+            mark_completed(intake_id, "risk")
+        except Exception as risk_err:
+            pipeline_mark_failed(intake_id, "risk", risk_err)
 
         # Step C: Preparation alerts
         alerts = generate_preparation_alerts(risk_scores)
@@ -198,10 +244,20 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
                 "status": "pending",
             }).execute()
 
-        # Step D: Investigation recommendations (only if vitals exist)
-        investigations = recommend_investigations(
-            symptoms_dict, vitals_dict, nlp_flags, risk_scores
+        # Step D: Investigation recommendations (visit-type aware)
+        from app.services.visit_classifier import classify_visit, get_routine_investigations
+        
+        visit_type = classify_visit(
+            symptoms_dict, vitals_dict, risk_scores["overall_severity"], data.emergency_description, data.chief_complaint
         )
+        
+        if visit_type == "routine":
+            investigations = get_routine_investigations()
+        else:
+            investigations = recommend_investigations(
+                symptoms_dict, vitals_dict, nlp_flags, risk_scores
+            )
+            
         for inv in investigations:
             supabase.table("investigation_recommendations").insert({
                 "intake_id": intake_id,

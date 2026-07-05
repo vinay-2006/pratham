@@ -1,0 +1,48 @@
+condition_key: "hemorrhagic_shock"
+condition_name: "Hemorrhagic Shock / Massive Bleeding"
+version: "2.0"
+priority: 1
+description: "Intravascular volume depletion and tissue hypoperfusion caused by severe acute blood loss."
+supporting_patterns:
+  - "hemodynamic_instability"
+supporting_findings:
+  symptoms:
+    - "bleeding"
+    - "trauma"
+  vitals:
+    - field: "bp_systolic"
+      operator: "<"
+      threshold: 90
+      label: "Hypotension (<90 mmHg)"
+    - field: "heart_rate"
+      operator: ">"
+      threshold: 110
+      label: "Tachycardia (>110 bpm)"
+  labs:
+    - analyte: "hemoglobin"
+      status: "LOW"
+conflicting_findings: []
+required_findings:
+  - "bleeding"
+optional_findings:
+  - "pallor"
+monitoring_priorities:
+  - "Continuous blood pressure and pulse pressure tracking"
+  - "Serial hemoglobin and hematocrit monitoring"
+  - "Urine output tracking via Foley catheter"
+clinical_precautions:
+  - "Activate Massive Transfusion Protocol (MTP) if shock persists"
+  - "Perform immediate hemoperitoneum scan (FAST ultrasound)"
+  - "Permissive hypotension strategy until active hemorrhage controlled"
+suggested_investigations:
+  - "CBC"
+  - "Blood Group & Cross-match"
+  - "Coagulation Profile"
+  - "FAST Ultrasound"
+limitations:
+  - "Initial hemoglobin may appear normal in acute rapid hemorrhage prior to hemodilution"
+evidence_weights:
+  pattern_weight: 30.0
+  symptom_weight: 30.0
+  lab_weight: 20.0
+  imaging_weight: 20.0

@@ -1,0 +1,47 @@
+condition_key: "pneumonia"
+condition_name: "Pneumonia"
+version: "1.2"
+priority: 1
+supporting_patterns:
+  - "respiratory_distress"
+  - "systemic_inflammation"
+supporting_findings:
+  symptoms:
+    - "breathlessness"
+  vitals:
+    - field: "spo2"
+      operator: "<"
+      threshold: 94
+      label: "SpO2 hypoxemia (<94%)"
+    - field: "temperature"
+      operator: ">"
+      threshold: 37.8
+      label: "Fever (>37.8°C)"
+  imaging:
+    prediction: "pneumonia"
+  labs:
+    - analyte: "wbc"
+      status: "HIGH"
+
+conflicting_findings:
+  symptoms:
+    - "chest_pain"
+  labs:
+    - analyte: "troponin"
+      status: "HIGH"
+
+monitoring_priorities:
+  - "Continuous SpO2 and respiratory rate monitoring"
+  - "Arterial Blood Gas (ABG) if SpO2 drops below 90%"
+  - "Serial temperature checks"
+
+clinical_precautions:
+  - "Assess for acute respiratory fatigue"
+  - "Consider supplemental oxygen if SpO2 < 92%"
+  - "Evaluate CURB-65 score for ICU admission criteria"
+
+suggested_investigations:
+  - "Chest X-ray"
+  - "ABG"
+  - "CBC"
+  - "Sputum Culture"

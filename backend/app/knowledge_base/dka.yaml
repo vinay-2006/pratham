@@ -1,0 +1,46 @@
+condition_key: "dka"
+condition_name: "Diabetic Ketoacidosis (DKA)"
+version: "2.0"
+priority: 1
+description: "Life-threatening endocrine emergency characterized by hyperglycemia, ketoacidosis, and anion gap metabolic acidosis."
+supporting_patterns:
+  - "systemic_inflammation"
+supporting_findings:
+  vitals:
+    - field: "respiratory_rate"
+      operator: ">"
+      threshold: 24
+      label: "Kussmaul breathing / tachypnea"
+  labs:
+    - analyte: "glucose"
+      status: "HIGH"
+    - analyte: "potassium"
+      status: "HIGH"
+conflicting_findings:
+  labs:
+    - analyte: "glucose"
+      status: "LOW"
+required_findings: []
+optional_findings:
+  - "polyuria"
+  - "fruity_breath"
+monitoring_priorities:
+  - "Hourly capillary blood glucose monitoring"
+  - "Serial electrolytes (potassium) every 2-4 hours during IV insulin infusion"
+  - "Venous Blood Gas (VBG) for pH and anion gap tracking"
+clinical_precautions:
+  - "Ensure Potassium > 3.3 mEq/L before starting IV insulin infusion"
+  - "Aggressive IV fluid resuscitation with normal saline"
+  - "Monitor for cerebral edema during rapid glucose correction in young patients"
+suggested_investigations:
+  - "Blood Glucose"
+  - "Basic Metabolic Panel"
+  - "ABG / VBG"
+  - "Urinalysis (Ketones)"
+limitations:
+  - "Euglycemic DKA may present with lower glucose levels (<250 mg/dL) in patients taking SGLT2 inhibitors"
+evidence_weights:
+  pattern_weight: 15.0
+  symptom_weight: 15.0
+  lab_weight: 50.0
+  imaging_weight: 20.0

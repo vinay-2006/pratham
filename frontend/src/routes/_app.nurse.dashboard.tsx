@@ -11,10 +11,13 @@
  *   · Awaiting approval      — intake_status === "intake_pending"
  *   · Evidence needed        — approved investigations with missing uploads
  *
- * The mini-queue panel shows the top 5 patients sorted by severity so
- * the nurse immediately sees who needs attention.
+ * Pipeline status polling:
+ *   · Polls GET /api/pipeline/status/{intakeId} every 3s while active
+ *   · Auto-stops after all stages are terminal OR after 60s
+ *   · Shows compact pipeline indicator per patient in mini-queue
  */
 
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import axios from "axios";
@@ -29,11 +32,14 @@ import {
   RefreshCw,
   ChevronRight,
   ShieldAlert,
+  Loader2,
 } from "lucide-react";
 import { SectionHeader } from "@/components/section-header";
+import { PipelineStatus } from "@/components/pipeline-status";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { fetchPipelineStatus, isPipelineActive, type PipelineStatusResponse } from "@/lib/report-api";
 
 export const Route = createFileRoute("/_app/nurse/dashboard")({
   head: () => ({
@@ -128,6 +134,36 @@ function NurseDashboard() {
     .sort((a, b) => (SEVERITY_ORDER[a.severity] ?? 3) - (SEVERITY_ORDER[b.severity] ?? 3))
     .slice(0, 5);
 
+  // ── Pipeline status polling for most recent patient ───────────────────
+  const latestIntakeId = topPatients[0]?.intake_id;
+  const [pipelineData, setPipelineData] = useState<PipelineStatusResponse | null>(null);
+  const [pipelinePolling, setPipelinePolling] = useState(true);
+  const pollStartRef = useRef<number>(Date.now());
+
+  const pollPipeline = useCallback(async () => {
+    if (!latestIntakeId) return;
+    try {
+      const data = await fetchPipelineStatus(latestIntakeId);
+      setPipelineData(data);
+      const elapsed = Date.now() - pollStartRef.current;
+      if (!isPipelineActive(data.stages) || elapsed >= 60_000) {
+        setPipelinePolling(false);
+      }
+    } catch { /* ignore */ }
+  }, [latestIntakeId]);
+
+  useEffect(() => {
+    if (!latestIntakeId) return;
+    pollStartRef.current = Date.now();
+    setPipelinePolling(true);
+    setPipelineData(null);
+    pollPipeline();
+    const interval = setInterval(() => {
+      if (pipelinePolling) pollPipeline();
+    }, 3_000);
+    return () => clearInterval(interval);
+  }, [latestIntakeId, pollPipeline, pipelinePolling]);
+
   return (
     <div className="mx-auto max-w-7xl px-5 py-8 md:px-8">
       <SectionHeader
@@ -198,6 +234,27 @@ function NurseDashboard() {
           color="sky"
         />
       </div>
+
+      {/* ── Pipeline Status Panel ───────────────────────────────── */}
+      {pipelineData && latestIntakeId && (
+        <div className="mt-6 rounded-lg border-2 border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/60 p-4 shadow-sm">
+          <div className="mb-3 flex items-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-[0.15em] text-slate-800 dark:text-gray-200">
+              AI Pipeline — {topPatients[0]?.patient_name || "Latest Patient"}
+            </span>
+            {pipelinePolling && (
+              <span className="flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[9px] font-bold text-sky-700 border border-sky-300">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sky-400 opacity-75" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-sky-500" />
+                </span>
+                LIVE
+              </span>
+            )}
+          </div>
+          <PipelineStatus stages={pipelineData.stages} />
+        </div>
+      )}
 
       {/* ── Main panels ─────────────────────────────────────────── */}
       <div className="mt-8 grid gap-6 lg:grid-cols-[1.4fr_1fr]">

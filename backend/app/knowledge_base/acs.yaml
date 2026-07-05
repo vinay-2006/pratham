@@ -1,0 +1,43 @@
+condition_key: "acs"
+condition_name: "Acute Coronary Syndrome"
+version: "1.2"
+priority: 1
+supporting_patterns:
+  - "myocardial_injury"
+  - "hemodynamic_instability"
+supporting_findings:
+  symptoms:
+    - "chest_pain"
+  vitals:
+    - field: "heart_rate"
+      operator: ">"
+      threshold: 100
+      label: "Tachycardia (>100 bpm)"
+  labs:
+    - analyte: "troponin"
+      status: "HIGH"
+
+conflicting_findings:
+  vitals:
+    - field: "temperature"
+      operator: ">"
+      threshold: 38.5
+      label: "High fever"
+  imaging:
+    prediction: "pneumonia"
+
+monitoring_priorities:
+  - "Continuous 12-lead ECG monitoring"
+  - "Serial troponin measurement at 0h, 3h, and 6h"
+  - "Continuous cardiac telemetry and BP tracking"
+
+clinical_precautions:
+  - "Immediate cardiology consult for ST-elevation assessment"
+  - "Avoid strenuous activity; maintain bed rest"
+  - "Prepare antiplatelet and anticoagulant pathway"
+
+suggested_investigations:
+  - "12-Lead ECG"
+  - "Troponin I / T"
+  - "Echocardiogram"
+  - "Cardiac Enzymes"

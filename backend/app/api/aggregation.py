@@ -336,6 +336,10 @@ async def run_aggregation(body: AggregationRequest) -> AggregationResponse:
     All scoring is deterministic and explainable via evidence_breakdown_json.
     No LLM or ML model is used in this pipeline.
     """
+    from app.services.pipeline_status_service import (
+        mark_running, mark_completed, mark_failed, get_stage_status,
+    )
+
     intake_id = body.intake_id
 
     # Verify intake exists
@@ -354,120 +358,162 @@ async def run_aggregation(body: AggregationRequest) -> AggregationResponse:
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Database error: {exc}")
 
-    # ── Step 1: Gather Evidence ──────────────────────────────────────────────
-    nlp     = _fetch_nlp(intake_id)
-    risk    = _fetch_risk(intake_id)
-    lab     = _fetch_lab(intake_id)
-    imaging = _fetch_imaging(intake_id)
+    # ── Dependency Check ────────────────────────────────────────────────────
+    # NLP: must be completed OR failed (fallback mode is acceptable)
+    # Risk: must be completed
+    # Lab/Imaging: optional (patient may not have X-ray or lab workup)
+    # Aggregation: must not already be running
+    nlp_status = get_stage_status(intake_id, "nlp")
+    risk_status = get_stage_status(intake_id, "risk")
+    agg_status = get_stage_status(intake_id, "aggregation")
 
-    source_summary: dict[str, bool] = {
-        "nlp":     nlp is not None,
-        "risk":    risk is not None,
-        "lab":     lab is not None,
-        "imaging": imaging is not None,
-    }
-    sources_present = sum(source_summary.values())
-
-    logger.info(
-        "[PRATHAM/AGG] intake=%s sources=%s",
-        intake_id, source_summary
-    )
-
-    # ── Step 2 & 3: Score + Raw Scores ──────────────────────────────────────
-    raw_scores, evidence_breakdown = _score_evidence(nlp, risk, lab, imaging)
-
-    logger.info("[PRATHAM/AGG] raw_scores=%s", raw_scores)
-
-    # ── Step 4: Confidence Suppression ──────────────────────────────────────
-    suppressed, suppression_reason = _check_suppression(raw_scores, sources_present)
-
-    # ── Step 5: Probability Distribution ────────────────────────────────────
-    probabilities: dict[str, Optional[float]]
-    primary_condition: Optional[str]
-
-    if suppressed:
-        probabilities = {c: None for c in CONDITIONS}
-        primary_condition = None
-        logger.info(
-            "[PRATHAM/AGG] intake=%s SUPPRESSED: %s",
-            intake_id, suppression_reason
-        )
-    else:
-        prob_map = _normalize(raw_scores)
-        probabilities = {c: prob_map[c] for c in CONDITIONS}
-        primary_condition = max(prob_map, key=lambda c: prob_map[c])
-        logger.info(
-            "[PRATHAM/AGG] intake=%s primary=%s probs=%s",
-            intake_id, primary_condition, probabilities
+    if nlp_status not in ("completed", "failed"):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Aggregation cannot run: NLP stage is '{nlp_status}'. "
+                "NLP must be completed or failed (fallback mode) before aggregation."
+            ),
         )
 
-    # ── Step 6: Persist ──────────────────────────────────────────────────────
-    now = datetime.now(timezone.utc).isoformat()
+    if risk_status != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Aggregation cannot run: Risk stage is '{risk_status}'. "
+                "Risk scoring must be completed before aggregation."
+            ),
+        )
 
-    db_row: dict = {
-        "intake_id":              intake_id,
-        "primary_condition":      primary_condition,
-        "confidence_suppressed":  suppressed,
-        "suppression_reason":     suppression_reason,
-        "raw_scores_json":        raw_scores,
-        "evidence_breakdown_json": evidence_breakdown,
-        "source_summary_json":    source_summary,
-        "created_at":             now,
-    }
+    if agg_status == "running":
+        raise HTTPException(
+            status_code=400,
+            detail="Aggregation is already running for this intake.",
+        )
 
-    # Populate probability columns (NULL when suppressed)
-    db_row["acs_probability"]        = probabilities.get("ACS")
-    db_row["pe_probability"]         = probabilities.get("PE")
-    db_row["pneumonia_probability"]  = probabilities.get("Pneumonia")
-    db_row["arrhythmia_probability"] = probabilities.get("Arrhythmia")
-    db_row["other_probability"]      = probabilities.get("Other")
+    mark_running(intake_id, "aggregation")
 
-    aggregation_id = ""
     try:
-        insert_res = supabase.table("aggregation_results").insert(db_row).execute()
-        if insert_res.data:
-            aggregation_id = insert_res.data[0].get("id", "")
-        logger.info(
-            "[PRATHAM/AGG] persisted: id=%s intake=%s suppressed=%s",
-            aggregation_id, intake_id, suppressed,
-        )
-    except Exception as db_exc:
-        err_str = str(db_exc)
-        # Graceful fallback: new columns may not exist if migration 006 hasn't run yet.
-        # Retry with the minimal guaranteed columns (original schema).
-        _new_cols = {"primary_condition", "raw_scores_json", "evidence_breakdown_json", "source_summary_json"}
-        col_missing = any(c in err_str for c in _new_cols) or "PGRST204" in err_str or "column" in err_str.lower()
-        if col_missing:
-            logger.warning(
-                "[PRATHAM/AGG] New columns missing — falling back to legacy schema. "
-                "Run migrations/006_aggregation_results_schema.sql in Supabase."
-            )
-            legacy_row = {
-                k: v for k, v in db_row.items()
-                if k not in _new_cols
-            }
-            try:
-                fallback_res = supabase.table("aggregation_results").insert(legacy_row).execute()
-                if fallback_res.data:
-                    aggregation_id = fallback_res.data[0].get("id", "")
-                logger.info("[PRATHAM/AGG] legacy persist ok: id=%s", aggregation_id)
-            except Exception as fb_exc:
-                logger.error("[PRATHAM/AGG] legacy persist also failed (non-fatal): %s", fb_exc)
-        else:
-            logger.error("[PRATHAM/AGG] aggregation_results insert failed (non-fatal): %s", db_exc)
+        # ── Step 1: Gather Evidence ──────────────────────────────────────────
+        nlp     = _fetch_nlp(intake_id)
+        risk    = _fetch_risk(intake_id)
+        lab     = _fetch_lab(intake_id)
+        imaging = _fetch_imaging(intake_id)
 
-    return AggregationResponse(
-        aggregation_id=aggregation_id,
-        intake_id=intake_id,
-        primary_condition=primary_condition,
-        probabilities=probabilities,
-        confidence_suppressed=suppressed,
-        suppression_reason=suppression_reason,
-        raw_scores=raw_scores,
-        evidence_breakdown=evidence_breakdown,
-        source_summary=source_summary,
-        created_at=now,
-    )
+        source_summary: dict[str, bool] = {
+            "nlp":     nlp is not None,
+            "risk":    risk is not None,
+            "lab":     lab is not None,
+            "imaging": imaging is not None,
+        }
+        sources_present = sum(source_summary.values())
+
+        logger.info(
+            "[PRATHAM/AGG] intake=%s sources=%s",
+            intake_id, source_summary
+        )
+
+        # ── Step 2 & 3: Score + Raw Scores ──────────────────────────────────
+        raw_scores, evidence_breakdown = _score_evidence(nlp, risk, lab, imaging)
+
+        logger.info("[PRATHAM/AGG] raw_scores=%s", raw_scores)
+
+        # ── Step 4: Confidence Suppression ──────────────────────────────────
+        suppressed, suppression_reason = _check_suppression(raw_scores, sources_present)
+
+        # ── Step 5: Probability Distribution ────────────────────────────────
+        probabilities: dict[str, Optional[float]]
+        primary_condition: Optional[str]
+
+        if suppressed:
+            probabilities = {c: None for c in CONDITIONS}
+            primary_condition = None
+            logger.info(
+                "[PRATHAM/AGG] intake=%s SUPPRESSED: %s",
+                intake_id, suppression_reason
+            )
+        else:
+            prob_map = _normalize(raw_scores)
+            probabilities = {c: prob_map[c] for c in CONDITIONS}
+            primary_condition = max(prob_map, key=lambda c: prob_map[c])
+            logger.info(
+                "[PRATHAM/AGG] intake=%s primary=%s probs=%s",
+                intake_id, primary_condition, probabilities
+            )
+
+        # ── Step 6: Persist ──────────────────────────────────────────────────
+        now = datetime.now(timezone.utc).isoformat()
+
+        db_row: dict = {
+            "intake_id":              intake_id,
+            "primary_condition":      primary_condition,
+            "confidence_suppressed":  suppressed,
+            "suppression_reason":     suppression_reason,
+            "raw_scores_json":        raw_scores,
+            "evidence_breakdown_json": evidence_breakdown,
+            "source_summary_json":    source_summary,
+            "created_at":             now,
+        }
+
+        # Populate probability columns (NULL when suppressed)
+        db_row["acs_probability"]        = probabilities.get("ACS")
+        db_row["pe_probability"]         = probabilities.get("PE")
+        db_row["pneumonia_probability"]  = probabilities.get("Pneumonia")
+        db_row["arrhythmia_probability"] = probabilities.get("Arrhythmia")
+        db_row["other_probability"]      = probabilities.get("Other")
+
+        aggregation_id = ""
+        try:
+            insert_res = supabase.table("aggregation_results").insert(db_row).execute()
+            if insert_res.data:
+                aggregation_id = insert_res.data[0].get("id", "")
+            logger.info(
+                "[PRATHAM/AGG] persisted: id=%s intake=%s suppressed=%s",
+                aggregation_id, intake_id, suppressed,
+            )
+        except Exception as db_exc:
+            err_str = str(db_exc)
+            # Graceful fallback: new columns may not exist if migration 006 hasn't run yet.
+            # Retry with the minimal guaranteed columns (original schema).
+            _new_cols = {"primary_condition", "raw_scores_json", "evidence_breakdown_json", "source_summary_json"}
+            col_missing = any(c in err_str for c in _new_cols) or "PGRST204" in err_str or "column" in err_str.lower()
+            if col_missing:
+                logger.warning(
+                    "[PRATHAM/AGG] New columns missing — falling back to legacy schema. "
+                    "Run migrations/006_aggregation_results_schema.sql in Supabase."
+                )
+                legacy_row = {
+                    k: v for k, v in db_row.items()
+                    if k not in _new_cols
+                }
+                try:
+                    fallback_res = supabase.table("aggregation_results").insert(legacy_row).execute()
+                    if fallback_res.data:
+                        aggregation_id = fallback_res.data[0].get("id", "")
+                    logger.info("[PRATHAM/AGG] legacy persist ok: id=%s", aggregation_id)
+                except Exception as fb_exc:
+                    logger.error("[PRATHAM/AGG] legacy persist also failed (non-fatal): %s", fb_exc)
+            else:
+                logger.error("[PRATHAM/AGG] aggregation_results insert failed (non-fatal): %s", db_exc)
+
+        mark_completed(intake_id, "aggregation")
+
+        return AggregationResponse(
+            aggregation_id=aggregation_id,
+            intake_id=intake_id,
+            primary_condition=primary_condition,
+            probabilities=probabilities,
+            confidence_suppressed=suppressed,
+            suppression_reason=suppression_reason,
+            raw_scores=raw_scores,
+            evidence_breakdown=evidence_breakdown,
+            source_summary=source_summary,
+            created_at=now,
+        )
+
+    except Exception as exc:
+        # Mark failed then re-raise (mark_failed re-raises automatically)
+        mark_failed(intake_id, "aggregation", exc)
 
 
 # ── Endpoint: GET /api/aggregate/{intake_id} ──────────────────────────────────

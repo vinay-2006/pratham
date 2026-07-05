@@ -1,15 +1,20 @@
 import { Link, useRouterState } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   Ambulance,
   Bell,
+  BookOpen,
   Brain,
   ClipboardCheck,
   ClipboardList,
   FileImage,
   FileText,
   FlaskConical,
+  GitCompare,
+  Layers,
   LayoutDashboard,
+  Search,
   ShieldAlert,
   Stethoscope,
   Users,
@@ -27,26 +32,47 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { useCase } from "@/lib/case-store";
+import { fetchQueueStats } from "@/lib/patient-queue-api";
 
-const nurseGroups = [
+interface NavItem {
+  title: string;
+  url: string;
+  icon: typeof Users;
+  badgeKey?: "pending" | "queue";
+}
+
+interface NavGroup {
+  label: string;
+  items: NavItem[];
+}
+
+const nurseGroups: NavGroup[] = [
   {
     label: "Nurse station",
     items: [
       { title: "Dashboard", url: "/nurse/dashboard", icon: LayoutDashboard },
       { title: "Emergency Intake", url: "/nurse/intake", icon: Ambulance },
-      { title: "Patient Queue", url: "/nurse/queue", icon: Users },
+      { title: "Patient Queue", url: "/nurse/queue", icon: Users, badgeKey: "queue" },
       { title: "Investigations", url: "/investigations", icon: ClipboardList },
+    ],
+  },
+  {
+    label: "Hospital Platform",
+    items: [
+      { title: "ED Command Center", url: "/command-center", icon: Activity },
+      { title: "Clinical Search", url: "/search", icon: Search },
+      { title: "Admin Telemetry", url: "/admin", icon: LayoutDashboard },
     ],
   },
 ];
 
-const doctorGroups = [
+const doctorGroups: NavGroup[] = [
   {
     label: "Doctor workstation",
     items: [
       { title: "Dashboard", url: "/doctor/dashboard", icon: LayoutDashboard },
-      { title: "Approvals", url: "/doctor/approvals", icon: ClipboardCheck, badgeKey: "pending" as const },
-      { title: "Patient Queue", url: "/nurse/queue", icon: Users },
+      { title: "Approvals", url: "/doctor/approvals", icon: ClipboardCheck, badgeKey: "pending" },
+      { title: "Patient Queue", url: "/nurse/queue", icon: Users, badgeKey: "queue" },
       { title: "Patient Review", url: "/doctor/review", icon: Stethoscope },
       { title: "Clinical Report", url: "/doctor/report/latest", icon: FileText },
     ],
@@ -61,6 +87,17 @@ const doctorGroups = [
       { title: "Confidence", url: "/confidence", icon: ShieldAlert },
     ],
   },
+  {
+    label: "Hospital Platform",
+    items: [
+      { title: "ED Command Center", url: "/command-center", icon: Activity },
+      { title: "Case Comparison", url: "/comparison", icon: GitCompare },
+      { title: "Clinical Search", url: "/search", icon: Search },
+      { title: "Knowledge Base", url: "/knowledge", icon: BookOpen },
+      { title: "Architecture", url: "/architecture", icon: Layers },
+      { title: "Admin Telemetry", url: "/admin", icon: LayoutDashboard },
+    ],
+  },
 ];
 
 export function AppSidebar() {
@@ -68,6 +105,16 @@ export function AppSidebar() {
   const currentPath = useRouterState({ select: (s) => s.location.pathname });
   const isActive = (p: string) => currentPath === p;
   const groups = role === "doctor" ? doctorGroups : nurseGroups;
+
+  // Lightweight queue stats for sidebar badge
+  const { data: queueStats } = useQuery({
+    queryKey: ["queue-stats"],
+    queryFn: fetchQueueStats,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+  });
+
+  const queueBadgeCount = queueStats?.pending_approval_patients ?? 0;
 
   return (
     <Sidebar collapsible="icon">
@@ -91,8 +138,12 @@ export function AppSidebar() {
             <SidebarGroupContent>
               <SidebarMenu>
                 {g.items.map((item) => {
-                  const showBadge =
-                    "badgeKey" in item && item.badgeKey === "pending" && pendingCount > 0;
+                  // Determine badge value
+                  let badgeValue = 0;
+                  if (item.badgeKey === "pending") badgeValue = pendingCount;
+                  if (item.badgeKey === "queue") badgeValue = queueBadgeCount;
+                  const showBadge = badgeValue > 0;
+
                   return (
                     <SidebarMenuItem key={item.url}>
                       <SidebarMenuButton asChild isActive={isActive(item.url)} tooltip={item.title}>
@@ -100,8 +151,9 @@ export function AppSidebar() {
                           <item.icon className="h-4 w-4" />
                           <span className="flex-1">{item.title}</span>
                           {showBadge && (
-                            <span className="ml-auto rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold text-primary-foreground group-data-[collapsible=icon]:hidden">
-                              {pendingCount}
+                            <span className="ml-auto inline-flex items-center gap-1 rounded-full bg-amber-500 px-1.5 py-0.5 text-[10px] font-bold text-white group-data-[collapsible=icon]:hidden">
+                              <span className="inline-block h-1.5 w-1.5 rounded-full bg-white/80" />
+                              {badgeValue}
                             </span>
                           )}
                         </Link>

@@ -52,6 +52,7 @@ INVESTIGATION_EVIDENCE_MAP: dict[str, str] = {
     "ABG": "lab_report",
     "D-Dimer": "lab_report",
     "BMP": "lab_report",
+    "Basic Metabolic Panel": "lab_report",
     "CMP": "lab_report",
     "BNP": "lab_report",
     "NT-proBNP": "lab_report",
@@ -61,6 +62,7 @@ INVESTIGATION_EVIDENCE_MAP: dict[str, str] = {
     "Blood Glucose": "lab_report",
     "Blood Culture": "lab_report",
     "Urine Analysis": "lab_report",
+    "Urinalysis": "lab_report",
     "Urine Culture": "lab_report",
     "Coagulation": "lab_report",
     "PT/INR": "lab_report",
@@ -323,7 +325,10 @@ def cleanup_ai_results(intake_id: str, evidence_type: str, evidence_id: str):
     2. If no other evidence of that type exists, deletes corresponding results in
        imaging_results (for xray) or lab_results (for lab_report).
     3. Always invalidates aggregation_results for the intake since inputs changed.
+    4. Resets corresponding pipeline_status stages back to 'pending'.
     """
+    from app.services.pipeline_status_service import reset_stage
+
     if not intake_id:
         return
 
@@ -339,17 +344,20 @@ def cleanup_ai_results(intake_id: str, evidence_type: str, evidence_id: str):
         other_evidence = [r for r in (res.data or []) if r.get("id") != evidence_id]
         
         if not other_evidence:
-            # Delete corresponding AI results
+            # Delete corresponding AI results and reset pipeline stage
             if evidence_type == "xray":
                 print(f"[PRATHAM] Cleaning up imaging results for intake {intake_id} (no remaining xrays)")
                 supabase.table("imaging_results").delete().eq("intake_id", intake_id).execute()
+                reset_stage(intake_id, "imaging")
             elif evidence_type == "lab_report":
                 print(f"[PRATHAM] Cleaning up lab results for intake {intake_id} (no remaining lab reports)")
                 supabase.table("lab_results").delete().eq("intake_id", intake_id).execute()
+                reset_stage(intake_id, "lab")
                 
-        # Always invalidate aggregation_results
+        # Always invalidate aggregation_results and reset aggregation pipeline
         print(f"[PRATHAM] Invalidating aggregation results for intake {intake_id}")
         supabase.table("aggregation_results").delete().eq("intake_id", intake_id).execute()
+        reset_stage(intake_id, "aggregation")
     except Exception as exc:
         print(f"[PRATHAM] Error during AI results cleanup: {exc}")
 

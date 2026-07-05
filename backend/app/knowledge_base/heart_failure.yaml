@@ -1,0 +1,55 @@
+condition_key: "heart_failure"
+condition_name: "Heart Failure Exacerbation"
+version: "2.0"
+priority: 1
+description: "Acute decompensated heart failure characterized by fluid overload, pulmonary congestion, or low cardiac output."
+supporting_patterns:
+  - "respiratory_distress"
+  - "hemodynamic_instability"
+supporting_findings:
+  symptoms:
+    - "breathlessness"
+  vitals:
+    - field: "spo2"
+      operator: "<"
+      threshold: 93
+      label: "Hypoxemia (SpO2 <93%)"
+    - field: "heart_rate"
+      operator: ">"
+      threshold: 100
+      label: "Tachycardia (>100 bpm)"
+  labs:
+    - analyte: "bun"
+      status: "HIGH"
+    - analyte: "creatinine"
+      status: "HIGH"
+conflicting_findings:
+  vitals:
+    - field: "temperature"
+      operator: ">"
+      threshold: 38.5
+      label: "High fever"
+required_findings:
+  - "breathlessness"
+optional_findings:
+  - "peripheral_edema"
+monitoring_priorities:
+  - "Strict fluid balance and daily weight monitoring"
+  - "Continuous SpO2 and respiratory effort assessment"
+  - "Serial electrolytes and kidney function monitoring"
+clinical_precautions:
+  - "Assess for acute pulmonary edema"
+  - "Monitor for worsening azotemia during diuresis"
+  - "Evaluate Echocardiogram for left ventricular ejection fraction (LVEF)"
+suggested_investigations:
+  - "Echocardiogram"
+  - "Chest X-ray"
+  - "BNP / NT-proBNP"
+  - "Basic Metabolic Panel"
+limitations:
+  - "BNP levels may be elevated in renal dysfunction independent of heart failure"
+evidence_weights:
+  pattern_weight: 25.0
+  symptom_weight: 20.0
+  lab_weight: 25.0
+  imaging_weight: 30.0

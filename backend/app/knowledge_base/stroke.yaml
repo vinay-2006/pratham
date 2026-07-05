@@ -1,0 +1,45 @@
+condition_key: "stroke"
+condition_name: "Acute Ischemic / Hemorrhagic Stroke"
+version: "2.0"
+priority: 1
+description: "Sudden neurological deficit caused by focal cerebral ischemia or intracerebral hemorrhage."
+supporting_patterns:
+  - "hemodynamic_instability"
+supporting_findings:
+  symptoms:
+    - "neurological_symptoms"
+    - "unconsciousness"
+  vitals:
+    - field: "bp_systolic"
+      operator: ">"
+      threshold: 160
+      label: "Hypertension (>160 mmHg)"
+conflicting_findings:
+  labs:
+    - analyte: "glucose"
+      status: "LOW"
+required_findings:
+  - "neurological_symptoms"
+optional_findings:
+  - "facial_droop"
+  - "arm_drift"
+monitoring_priorities:
+  - "Frequent neurological observations (GCS, NIHSS)"
+  - "Strict Blood Pressure targets (avoid sudden hypotension)"
+  - "Continuous SpO2 and airway patency monitoring"
+clinical_precautions:
+  - "Immediate Non-Contrast CT Brain to rule out hemorrhage before thrombolysis"
+  - "Check capillary blood glucose immediately to rule out hypoglycemia mimic"
+  - "Maintain NPO status until swallow screen completed"
+suggested_investigations:
+  - "CT Brain"
+  - "Blood Glucose"
+  - "Coagulation Profile"
+  - "ECG"
+limitations:
+  - "Early ischemic stroke (<6 hours) may not show hypodensity on non-contrast CT"
+evidence_weights:
+  pattern_weight: 20.0
+  symptom_weight: 35.0
+  lab_weight: 15.0
+  imaging_weight: 30.0

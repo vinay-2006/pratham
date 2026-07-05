@@ -18,6 +18,9 @@ export interface PatientQueueItem {
   severity: string;
   arrival_time: string;
   intake_status: string;
+  chief_complaint: string;
+  created_at: string;
+  workflow_status: string;
   investigation_counts: {
     approved: number;
     pending: number;
@@ -32,7 +35,32 @@ export interface PatientQueueItem {
   pipeline_status: PipelineStatusMap;
 }
 
+export interface QueueStats {
+  total_patients: number;
+  pending_approval_patients: number;
+}
+
+export interface TimelineEvent {
+  event: string;
+  timestamp: string;
+  icon: string;
+  type: string;
+  detail: string | null;
+}
+
 export async function fetchPatientQueue(): Promise<PatientQueueItem[]> {
   const { data } = await axios.get<PatientQueueItem[]>(`${API_BASE}/investigations/queue`);
+  return data;
+}
+
+export async function fetchQueueStats(): Promise<QueueStats> {
+  const { data } = await axios.get<QueueStats>(`${API_BASE}/investigations/queue/stats`);
+  return data;
+}
+
+export async function fetchPatientTimeline(intakeId: string): Promise<TimelineEvent[]> {
+  const { data } = await axios.get<TimelineEvent[]>(
+    `${API_BASE}/investigations/patient/${intakeId}/timeline`
+  );
   return data;
 }

@@ -1,0 +1,45 @@
+condition_key: "copd"
+condition_name: "COPD Acute Exacerbation"
+version: "2.0"
+priority: 1
+description: "Sustained worsening of chronic obstructive pulmonary disease symptoms beyond day-to-day variations."
+supporting_patterns:
+  - "respiratory_distress"
+supporting_findings:
+  symptoms:
+    - "breathlessness"
+  vitals:
+    - field: "spo2"
+      operator: "<"
+      threshold: 90
+      label: "Baseline / acute hypoxemia (<90%)"
+    - field: "respiratory_rate"
+      operator: ">"
+      threshold: 22
+      label: "Tachypnea"
+conflicting_findings:
+  vitals:
+    - field: "temperature"
+      operator: ">"
+      threshold: 38.5
+      label: "High fever"
+  labs:
+    - analyte: "troponin"
+      status: "HIGH"
+required_findings:
+  - "breathlessness"
+optional_findings:
+  - "chronic_cough"
+monitoring_priorities:
+  - "Controlled oxygen delivery (target SpO2 88-92% to avoid hypercapnia)"
+  - "Serial ABG to monitor PaCO2 and pH"
+clinical_precautions:
+  - "Caution with unmonitored high-flow oxygen due to risk of CO2 retention"
+  - "Consider NIV/BiPAP for acute hypercapnic respiratory failure"
+suggested_investigations:
+  - "ABG"
+  - "Chest X-ray"
+  - "CBC"
+  - "Basic Metabolic Panel"
+limitations:
+  - "Baseline chronic ABG abnormalities can complicate interpretation"

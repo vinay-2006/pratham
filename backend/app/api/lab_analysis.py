@@ -194,88 +194,99 @@ async def lab_analyze(body: LabAnalyzeRequest) -> LabAnalyzeResponse:
     Results are persisted to the `lab_results` table and returned in
     the response.
     """
+    from app.services.pipeline_status_service import mark_running, mark_completed, mark_failed
+
     intake_id = body.intake_id
     override  = body.clinical_override or ClinicalOverride()
 
-    # 1. Pull base data from DB
+    mark_running(intake_id, "lab")
+
     try:
-        db_data = _fetch_patient_data(intake_id)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        logger.error("[PRATHAM/ML] DB fetch failed for intake %s: %s", intake_id, exc)
-        raise HTTPException(status_code=500, detail=f"Database error: {exc}")
+        # 1. Pull base data from DB
+        try:
+            db_data = _fetch_patient_data(intake_id)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error("[PRATHAM/ML] DB fetch failed for intake %s: %s", intake_id, exc)
+            raise HTTPException(status_code=500, detail=f"Database error: {exc}")
 
-    # 2. Build full patient dict for model
-    max_hr = override.max_hr if override.max_hr is not None else db_data["heart_rate_from_vitals"]
+        # 2. Build full patient dict for model
+        max_hr = override.max_hr if override.max_hr is not None else db_data["heart_rate_from_vitals"]
 
-    patient_input: dict[str, Any] = {
-        "age":             db_data["age"],
-        "sex":             db_data["sex"],
-        "resting_bp":      db_data["resting_bp"],
-        "chest_pain_type": override.chest_pain_type or "ASY",
-        "cholesterol":     override.cholesterol or 0,
-        "fasting_bs":      override.fasting_bs or 0,
-        "resting_ecg":     override.resting_ecg or "Normal",
-        "max_hr":          max_hr,
-        "exercise_angina": override.exercise_angina or "N",
-        "oldpeak":         override.oldpeak or 0.0,
-        "st_slope":        override.st_slope or "Flat",
-    }
+        patient_input: dict[str, Any] = {
+            "age":             db_data["age"],
+            "sex":             db_data["sex"],
+            "resting_bp":      db_data["resting_bp"],
+            "chest_pain_type": override.chest_pain_type or "ASY",
+            "cholesterol":     override.cholesterol or 0,
+            "fasting_bs":      override.fasting_bs or 0,
+            "resting_ecg":     override.resting_ecg or "Normal",
+            "max_hr":          max_hr,
+            "exercise_angina": override.exercise_angina or "N",
+            "oldpeak":         override.oldpeak or 0.0,
+            "st_slope":        override.st_slope or "Flat",
+        }
 
-    # 3. Run inference (XGBoost + SHAP)
-    try:
-        result = run_inference(patient_input)
-    except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail=str(exc))
-    except Exception as exc:
-        logger.error("[PRATHAM/ML] Inference failed: %s", exc)
-        raise HTTPException(status_code=500, detail=f"Inference error: {exc}")
+        # 3. Run inference (XGBoost + SHAP)
+        try:
+            result = run_inference(patient_input)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc))
+        except Exception as exc:
+            logger.error("[PRATHAM/ML] Inference failed: %s", exc)
+            raise HTTPException(status_code=500, detail=f"Inference error: {exc}")
 
-    risk_probability = result["risk_probability"]
-    prediction       = result["prediction"]
-    shap_values      = result["shap_values"]
-    input_features   = result["input_features"]
-    top_features     = _top_n_features(shap_values, n=5)
+        risk_probability = result["risk_probability"]
+        prediction       = result["prediction"]
+        shap_values      = result["shap_values"]
+        input_features   = result["input_features"]
+        top_features     = _top_n_features(shap_values, n=5)
 
-    # 4. Persist to lab_results
-    now = datetime.now(timezone.utc).isoformat()
-    db_row = {
-        "intake_id":        intake_id,
-        "model_name":       "task9_xgboost_heart_model",
-        "prediction":       prediction,
-        "risk_probability": risk_probability,
-        "shap_values":      shap_values,         # JSONB
-        "input_features":   input_features,      # JSONB
-        "created_at":       now,
-    }
+        # 4. Persist to lab_results
+        now = datetime.now(timezone.utc).isoformat()
+        db_row = {
+            "intake_id":        intake_id,
+            "model_name":       "task9_xgboost_heart_model",
+            "prediction":       prediction,
+            "risk_probability": risk_probability,
+            "shap_values":      shap_values,         # JSONB
+            "input_features":   input_features,      # JSONB
+            "created_at":       now,
+        }
 
-    lab_result_id = ""
-    try:
-        insert_res = supabase.table("lab_results").insert(db_row).execute()
-        if insert_res.data:
-            lab_result_id = insert_res.data[0].get("id", "")
-        logger.info(
-            "[PRATHAM/ML] lab_results row inserted: id=%s intake=%s prediction=%s prob=%.4f",
-            lab_result_id, intake_id, prediction, risk_probability,
+        lab_result_id = ""
+        try:
+            insert_res = supabase.table("lab_results").insert(db_row).execute()
+            if insert_res.data:
+                lab_result_id = insert_res.data[0].get("id", "")
+            logger.info(
+                "[PRATHAM/ML] lab_results row inserted: id=%s intake=%s prediction=%s prob=%.4f",
+                lab_result_id, intake_id, prediction, risk_probability,
+            )
+        except Exception as db_exc:
+            # Non-fatal: still return the prediction even if DB write fails
+            logger.error(
+                "[PRATHAM/ML] lab_results insert failed (non-fatal): %s", db_exc
+            )
+
+        mark_completed(intake_id, "lab")
+
+        return LabAnalyzeResponse(
+            intake_id=intake_id,
+            lab_result_id=lab_result_id,
+            model_name="task9_xgboost_heart_model",
+            risk_probability=risk_probability,
+            prediction=prediction,
+            top_features=top_features,
+            shap_values=shap_values,
+            input_features=input_features,
+            created_at=now,
         )
-    except Exception as db_exc:
-        # Non-fatal: still return the prediction even if DB write fails
-        logger.error(
-            "[PRATHAM/ML] lab_results insert failed (non-fatal): %s", db_exc
-        )
 
-    return LabAnalyzeResponse(
-        intake_id=intake_id,
-        lab_result_id=lab_result_id,
-        model_name="task9_xgboost_heart_model",
-        risk_probability=risk_probability,
-        prediction=prediction,
-        top_features=top_features,
-        shap_values=shap_values,
-        input_features=input_features,
-        created_at=now,
-    )
+    except Exception as exc:
+        # Mark failed then re-raise (mark_failed re-raises automatically)
+        mark_failed(intake_id, "lab", exc)
 
 
 # ── GET: retrieve stored results ──────────────────────────────────────────

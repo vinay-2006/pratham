@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useMemo, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Ambulance, Send } from "lucide-react";
+import { Ambulance, Send, ShieldCheck } from "lucide-react";
 import axios from "axios";
 import { useCase } from "@/lib/case-store";
 import { SectionHeader } from "@/components/section-header";
@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_app/nurse/intake")({
   head: () => ({
@@ -233,7 +234,24 @@ function NurseIntakePage() {
           </Card>
 
           <Card>
-            <CardHeader><CardTitle className="text-base">Symptoms</CardTitle></CardHeader>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-base">Symptoms</CardTitle>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setSelected([])}
+                className={cn(
+                  "h-8 text-xs font-semibold gap-1.5 transition-all",
+                  selected.length === 0
+                    ? "border-emerald-500 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 dark:border-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400"
+                    : "text-muted-foreground"
+                )}
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                No Symptoms
+              </Button>
+            </CardHeader>
             <CardContent>
               <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
                 {SYMPTOMS.map((s) => {

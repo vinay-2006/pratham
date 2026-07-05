@@ -11,19 +11,28 @@ Key design decisions:
 from __future__ import annotations
 
 
+from app.services.visit_classifier import get_routine_investigations
+
+
 def recommend_investigations(
-    symptoms: dict, vitals: dict, nlp_flags: dict, risk_scores: dict
+    symptoms: dict,
+    vitals: dict,
+    nlp_flags: dict,
+    risk_scores: dict,
+    is_routine: bool = False,
 ) -> list[str]:
     """
     Rule-based investigation recommendations.
     Returns a sorted list of investigation names.
 
-    Each pathway has a strict symptom gate — tests are NOT added
-    unless the relevant symptom or clinical flag is explicitly present.
-
-    If no vitals data is available, vitals-dependent thresholds are skipped
-    to avoid false recommendations from default/zero values.
+    If is_routine is True (Routine Clinical Checkup):
+    - Recommends baseline panel: CBC, Basic Metabolic Panel, Blood Glucose, Urinalysis
+    - Recommends 0 imaging tests
+    - Never triggers emergency pathways
     """
+    if is_routine:
+        return sorted(get_routine_investigations())
+
     investigations: set[str] = set()
 
     # Check whether vitals data actually exists
