@@ -1,6 +1,6 @@
 # PRATHAM — Predictive Risk Assessment & Triage for Healthcare AI Management
 
-> **PRATHAM v4.0.0** is an enterprise-grade emergency department clinical AI platform providing real-time in-transit intake, NLP extraction, demographic-aware lab analytics, deterministic clinical scoring (NEWS2, qSOFA, Wells PE, HEART), and an interactive **Evidence-Aware Clinical & System Copilot**.
+> **PRATHAM v5.0.0** is an enterprise-grade emergency department clinical AI platform providing real-time in-transit intake, NLP extraction, demographic-aware lab analytics, deterministic clinical scoring (NEWS2, qSOFA, Wells PE, HEART), and an interactive **Evidence-Aware Clinical & System Copilot**.
 
 ---
 

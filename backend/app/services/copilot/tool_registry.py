@@ -104,7 +104,7 @@ def handle_compare_conditions(contexts: Dict[str, Any], query: str) -> Dict[str,
         ],
         "context_stats": {"facts_used": 34, "knowledge_rules": 2, "timeline_events": 2, "lab_features": 10},
         "engine_versions": {"copilot": "1.0", "reasoning": "2.1", "knowledge_base": "2.0"},
-        "safety": {"llm_used": True, "hallucination_guard": "PASS", "grounding": "STRICT"},
+        "safety": {"llm_used": False, "hallucination_guard": "PASS", "grounding": "DETERMINISTIC_EXACT"},
     }
 
 def handle_investigation_assistant(contexts: Dict[str, Any], query: str) -> Dict[str, Any]:
@@ -126,7 +126,7 @@ def handle_investigation_assistant(contexts: Dict[str, Any], query: str) -> Dict
         ],
         "context_stats": {"facts_used": 12, "knowledge_rules": 1, "timeline_events": 0, "lab_features": 4},
         "engine_versions": {"copilot": "1.0", "reasoning": "2.1", "knowledge_base": "2.0"},
-        "safety": {"llm_used": True, "hallucination_guard": "PASS", "grounding": "STRICT"},
+        "safety": {"llm_used": False, "hallucination_guard": "PASS", "grounding": "DETERMINISTIC_EXACT"},
     }
 
 def handle_timeline_qa(contexts: Dict[str, Any], query: str) -> Dict[str, Any]:
@@ -151,7 +151,7 @@ def handle_timeline_qa(contexts: Dict[str, Any], query: str) -> Dict[str, Any]:
         ],
         "context_stats": {"facts_used": 20, "knowledge_rules": 1, "timeline_events": 2, "lab_features": 6},
         "engine_versions": {"copilot": "1.0", "reasoning": "2.1", "knowledge_base": "2.0"},
-        "safety": {"llm_used": True, "hallucination_guard": "PASS", "grounding": "STRICT"},
+        "safety": {"llm_used": False, "hallucination_guard": "PASS", "grounding": "DETERMINISTIC_EXACT"},
     }
 
 def handle_report_summary(contexts: Dict[str, Any], query: str) -> Dict[str, Any]:
@@ -174,7 +174,7 @@ def handle_report_summary(contexts: Dict[str, Any], query: str) -> Dict[str, Any
         ],
         "context_stats": {"facts_used": 40, "knowledge_rules": 2, "timeline_events": 2, "lab_features": 12},
         "engine_versions": {"copilot": "1.0", "reasoning": "2.1", "knowledge_base": "2.0"},
-        "safety": {"llm_used": True, "hallucination_guard": "PASS", "grounding": "STRICT"},
+        "safety": {"llm_used": False, "hallucination_guard": "PASS", "grounding": "DETERMINISTIC_EXACT"},
     }
 
 TOOL_REGISTRY: Dict[str, Callable[[Dict[str, Any], str], Dict[str, Any]]] = {

@@ -6,7 +6,7 @@ import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
@@ -66,7 +66,7 @@ app = FastAPI(
         "Provides emergency intake, NLP extraction, risk scoring, investigation "
         "recommendations, imaging analysis, lab processing, and evidence aggregation."
     ),
-    version="4.0.0",
+    version="5.0.0",
     lifespan=lifespan,
 )
 
@@ -253,10 +253,10 @@ async def metrics_endpoint() -> dict[str, Any]:
 async def get_version_endpoint() -> dict[str, str]:
     """Return platform metadata versioning information."""
     return {
-        "version": "v4.0.0",
+        "version": "v5.0.0",
         "api_spec_version": "v1.0",
         "build_date": "2026-07-05",
-        "commit_hash": "5f0017d",
+        "commit_hash": "a0096a8",
     }
 
 

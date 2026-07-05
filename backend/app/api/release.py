@@ -15,8 +15,8 @@ async def get_release_info() -> Dict[str, str]:
         "project": "PRATHAM",
         "version": "5.0.0",
         "build_date": "2026-07-05",
-        "git_commit": "c5f08bd",
-        "branch": "feature/copilot",
+        "git_commit": "a0096a8",
+        "branch": "main",
         "release_status": "Stable",
         "copyright": "© 2026 PRATHAM Medical AI"
     }

@@ -8,7 +8,9 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from app.models.patient import EmergencyIntakeCreate, IntakeResponse
 from app.db.supabase_client import supabase
+import logging
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -31,7 +33,7 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
             if patient_id:
                 supabase.table("patients").delete().eq("id", patient_id).execute()
         except Exception as cleanup_err:
-            print(f"[PRATHAM] Rollback cleanup error (non-fatal): {cleanup_err}")
+            logger.warning("[PRATHAM] Rollback cleanup error (non-fatal): %s", cleanup_err)
 
     try:
         # Convert numeric age to valid DOB date string format YYYY-01-01 if needed
@@ -90,7 +92,7 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
                 raise Exception("Vitals insert returned empty data")
             vitals_saved = True
         except Exception as vitals_err:
-            print(f"[PRATHAM] Vitals insert failed — rolling back: {vitals_err}")
+            logger.error("[PRATHAM] Vitals insert failed - rolling back: %s", vitals_err)
             _rollback()
             raise HTTPException(
                 status_code=500,
@@ -109,7 +111,7 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
                 "neurological_symptoms": data.symptoms.neurological_symptoms,
             }).execute()
         except Exception as sym_err:
-            print(f"[PRATHAM] Symptoms insert failed — rolling back: {sym_err}")
+            logger.error("[PRATHAM] Symptoms insert failed - rolling back: %s", sym_err)
             # Also clean up vitals
             try:
                 supabase.table("vitals").delete().eq("intake_id", intake_id).execute()
@@ -132,7 +134,7 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
         try:
             initialize_pipeline(intake_id)
         except Exception as init_err:
-            print(f"[PRATHAM] Pipeline initialization failed — rolling back intake: {init_err}")
+            logger.error("[PRATHAM] Pipeline initialization failed - rolling back intake: %s", init_err)
             # Also clean up vitals + symptoms
             try:
                 supabase.table("symptoms").delete().eq("intake_id", intake_id).execute()
@@ -190,7 +192,7 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
             supabase.table("nlp_extractions").insert(nlp_row).execute()
             mark_completed(intake_id, "nlp")
         except Exception as nlp_err:
-            print(f"[PRATHAM] NLP extraction failed (non-fatal): {nlp_err}")
+            logger.warning("[PRATHAM] NLP extraction failed (non-fatal): %s", nlp_err)
             # Record failure but do NOT re-raise — NLP uses graceful degradation
             try:
                 supabase.table("pipeline_status").update({

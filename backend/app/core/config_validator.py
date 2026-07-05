@@ -3,8 +3,11 @@ PRATHAM Startup Configuration Validator
 Ensures all required environment variables are set and populated before backend initialization.
 """
 
+import logging
 import os
 import sys
+
+logger = logging.getLogger(__name__)
 
 REQUIRED_ENV_VARS = [
     "SUPABASE_URL",
@@ -15,7 +18,7 @@ REQUIRED_ENV_VARS = [
 
 def validate_startup_config():
     """Verify that all required environment variables are present and non-empty."""
-    print("[PRATHAM] Auditing environment configuration...")
+    logger.info("[PRATHAM] Auditing environment configuration...")
     missing_vars = []
     invalid_vars = []
 
@@ -27,15 +30,16 @@ def validate_startup_config():
             invalid_vars.append(var)
 
     if missing_vars or invalid_vars:
-        print("=" * 60)
-        print("  FATAL CONFIGURATION ERROR: Start blocked due to missing or invalid keys")
-        print("=" * 60)
+        sep = "=" * 60
+        logger.critical(sep)
+        logger.critical("  FATAL CONFIGURATION ERROR: Start blocked due to missing or invalid keys")
+        logger.critical(sep)
         if missing_vars:
-            print(f"Missing required environment variable(s): {', '.join(missing_vars)}")
+            logger.critical("Missing required environment variable(s): %s", ", ".join(missing_vars))
         if invalid_vars:
-            print(f"Placeholder or empty value for variable(s): {', '.join(invalid_vars)}")
-        print("\nPlease check your .env file or environment settings before starting the server.")
-        print("=" * 60)
+            logger.critical("Placeholder or empty value for variable(s): %s", ", ".join(invalid_vars))
+        logger.critical("Please check your .env file or environment settings before starting the server.")
+        logger.critical(sep)
         sys.exit(1)
 
-    print("[PRATHAM] Environment variables checked successfully.")
+    logger.info("[PRATHAM] Environment variables validated successfully.")

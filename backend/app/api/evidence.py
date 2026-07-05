@@ -13,8 +13,10 @@ import uuid
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
+import logging
 from app.db.supabase_client import supabase
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 VALID_EVIDENCE_TYPES = {"xray", "lab_report", "ecg", "clinical_notes"}
@@ -219,7 +221,7 @@ async def upload_evidence(
         )
         file_url = signed.get("signedURL") or signed.get("signed_url") or ""
     except Exception as sign_err:
-        print(f"[PRATHAM] Warning: Could not generate signed URL: {sign_err}")
+        logger.warning("[PRATHAM] Warning: Could not generate signed URL: %s", sign_err)
 
     # 6. Insert row into evidence table
     insert_payload: dict = {
@@ -346,20 +348,20 @@ def cleanup_ai_results(intake_id: str, evidence_type: str, evidence_id: str):
         if not other_evidence:
             # Delete corresponding AI results and reset pipeline stage
             if evidence_type == "xray":
-                print(f"[PRATHAM] Cleaning up imaging results for intake {intake_id} (no remaining xrays)")
+                logger.info("[PRATHAM] Cleaning up imaging results for intake %s (no remaining xrays)", intake_id)
                 supabase.table("imaging_results").delete().eq("intake_id", intake_id).execute()
                 reset_stage(intake_id, "imaging")
             elif evidence_type == "lab_report":
-                print(f"[PRATHAM] Cleaning up lab results for intake {intake_id} (no remaining lab reports)")
+                logger.info("[PRATHAM] Cleaning up lab results for intake %s (no remaining lab reports)", intake_id)
                 supabase.table("lab_results").delete().eq("intake_id", intake_id).execute()
                 reset_stage(intake_id, "lab")
                 
         # Always invalidate aggregation_results and reset aggregation pipeline
-        print(f"[PRATHAM] Invalidating aggregation results for intake {intake_id}")
+        logger.info("[PRATHAM] Invalidating aggregation results for intake %s", intake_id)
         supabase.table("aggregation_results").delete().eq("intake_id", intake_id).execute()
         reset_stage(intake_id, "aggregation")
     except Exception as exc:
-        print(f"[PRATHAM] Error during AI results cleanup: {exc}")
+        logger.warning("[PRATHAM] Error during AI results cleanup: %s", exc)
 
 
 @router.delete("/evidence/{evidence_id}", tags=["Evidence Upload"], status_code=204)
@@ -410,9 +412,9 @@ async def delete_evidence(evidence_id: str):
     if storage_path:
         try:
             rm_res = supabase.storage.from_(BUCKET).remove([storage_path])
-            print(f"[PRATHAM] Storage delete storage_path={storage_path!r} res={rm_res!r}")
+            logger.info("[PRATHAM] Storage delete storage_path=%r res=%r", storage_path, rm_res)
         except Exception as rm_err:
-            print(f"[PRATHAM] Storage delete warning (non-fatal): {rm_err}")
+            logger.warning("[PRATHAM] Storage delete warning (non-fatal): %s", rm_err)
 
     # 3. Clean up downstream AI results and invalidate aggregation
     intake_id = row.get("intake_id", "")
