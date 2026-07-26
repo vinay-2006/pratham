@@ -97,7 +97,12 @@ async def get_complete_report(intake_id: str) -> Dict[str, Any]:
     if not intake:
         raise ValueError(f"Intake {intake_id} not found")
 
-    patient_row = intake.get("patients") or {}
+    # Supabase returns patients as a dict (FK join), but guard against
+    # edge cases where it could return [] (e.g., RLS filtering, orphan FK).
+    patient_raw = intake.get("patients")
+    patient_row = patient_raw if isinstance(patient_raw, dict) else (
+        patient_raw[0] if isinstance(patient_raw, list) and patient_raw else {}
+    )
     vitals_rows = intake.get("vitals") or []
     vitals_row = vitals_rows[0] if vitals_rows else {}
     syms_rows = intake.get("symptoms") or []
@@ -111,7 +116,10 @@ async def get_complete_report(intake_id: str) -> Dict[str, Any]:
 
     bp_sys = vitals_row.get("bp_systolic")
     bp_dia = vitals_row.get("bp_diastolic")
-    bp_str = f"{int(bp_sys)}/{int(bp_dia)}" if bp_sys and bp_dia else "—"
+    try:
+        bp_str = f"{int(bp_sys)}/{int(bp_dia)}" if bp_sys and bp_dia else "—"
+    except (ValueError, TypeError):
+        bp_str = "—"
 
     symptom_list = [
         label for field, label in SYMPTOM_LABEL_MAP.items()
@@ -398,16 +406,19 @@ async def get_complete_report(intake_id: str) -> Dict[str, Any]:
         log_data = workflow_repository.get_logs(intake_id)
         timeline_list = []
         for log in log_data:
+            changed_at = log.get("changed_at") or ""
             try:
-                dt = datetime.fromisoformat(log["changed_at"].replace("Z", "+00:00"))
+                dt = datetime.fromisoformat(changed_at.replace("Z", "+00:00"))
                 time_str = dt.strftime("%I:%M %p")
             except Exception:
-                time_str = log["changed_at"]
-            new_status_lbl = log["new_status"].replace("_", " ").title()
+                time_str = changed_at
+            new_status_lbl = (log.get("new_status") or "").replace("_", " ").title()
+            actor_type = log.get("actor_type") or "System"
+            actor_name = log.get("actor_name") or "Unknown"
             timeline_list.append({
                 "time": time_str,
                 "event": new_status_lbl,
-                "actor": f"{log['actor_type']} ({log['actor_name']})",
+                "actor": f"{actor_type} ({actor_name})",
                 "reason": log.get("reason") or ""
             })
         if not timeline_list:

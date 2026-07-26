@@ -397,7 +397,10 @@ async def get_intake(intake_id: str):
         spo2 = vitals.get("spo2")
         bp_sys = vitals.get("bp_systolic")
         bp_dia = vitals.get("bp_diastolic")
-        bp_str = f"{int(bp_sys)}/{int(bp_dia)}" if bp_sys and bp_dia else "—"
+        try:
+            bp_str = f"{int(bp_sys)}/{int(bp_dia)}" if bp_sys and bp_dia else "—"
+        except (ValueError, TypeError):
+            bp_str = "—"
         rr = vitals.get("respiratory_rate")
         temp = vitals.get("temperature")
 

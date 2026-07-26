@@ -8,7 +8,7 @@ and triage rationale chains.
 from __future__ import annotations
 import logging
 from typing import Any, Dict, List
-from app.db.supabase_client import supabase
+from app.domains.triage.repository import intake_repository
 
 logger = logging.getLogger(__name__)
 
@@ -25,20 +25,19 @@ def get_command_center_telemetry() -> Dict[str, Any]:
     priority_board: List[Dict[str, Any]] = []
 
     try:
-        intake_res = (
-            supabase.table("emergency_intake")
-            .select("id, severity_level, chief_complaint, emergency_description, created_at, patients(first_name, last_name)")
-            .order("created_at", desc=True)
-            .limit(20)
-            .execute()
+        data = intake_repository.list_recent(
+            columns="id, severity_level, chief_complaint, emergency_description, created_at, patients(first_name, last_name)",
+            limit=20,
         )
-        data = intake_res.data or []
         active_cases = len(data)
 
         for item in data:
             sev = (item.get("severity_level") or "moderate").lower()
             p_name = "Unknown"
-            p_row = item.get("patients")
+            p_raw = item.get("patients")
+            p_row = p_raw if isinstance(p_raw, dict) else (
+                p_raw[0] if isinstance(p_raw, list) and p_raw else {}
+            )
             if p_row:
                 p_name = f"{p_row.get('first_name', '')} {p_row.get('last_name', '')}".strip()
 
