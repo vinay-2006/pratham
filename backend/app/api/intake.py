@@ -5,10 +5,21 @@ Writes patient, emergency_intake, vitals, and symptoms to Supabase.
 
 from __future__ import annotations
 
+import logging
+import uuid
 from fastapi import APIRouter, HTTPException
 from app.models.patient import EmergencyIntakeCreate, IntakeResponse
 from app.db.supabase_client import supabase
-import logging
+from app.domains.ai.repository import nlp_repository, risk_scores_repository
+from app.domains.triage.repository import (
+    intake_repository,
+    vitals_repository,
+    symptoms_repository,
+    patients_repository,
+    preparation_alerts_repository,
+)
+from app.models.workflow import WorkflowStatus
+from app.services.workflow_service import log_status_transition, update_workflow_status
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -29,9 +40,9 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
         """Delete any records that were partially created."""
         try:
             if intake_id:
-                supabase.table("emergency_intake").delete().eq("id", intake_id).execute()
+                intake_repository.delete(intake_id)
             if patient_id:
-                supabase.table("patients").delete().eq("id", patient_id).execute()
+                patients_repository.delete(patient_id)
         except Exception as cleanup_err:
             logger.warning("[PRATHAM] Rollback cleanup error (non-fatal): %s", cleanup_err)
 
@@ -45,7 +56,7 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
             dob = f"{birth_year}-01-01"
 
         # 1. Insert patient
-        patient_result = supabase.table("patients").insert({
+        patient_row = patients_repository.create({
             "first_name": data.patient.first_name,
             "last_name": data.patient.last_name,
             "date_of_birth": dob,
@@ -54,31 +65,60 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
             "allergies": data.patient.allergies,
             "current_medications": data.patient.current_medications,
             "past_medical_history": data.patient.past_medical_history,
-        }).execute()
+        })
 
-        if not patient_result.data:
-            raise HTTPException(status_code=500, detail="Failed to insert patient record")
+        patient_id = patient_row["id"]
 
-        patient_id = patient_result.data[0]["id"]
+        # Determine initial status based on arrival type
+        arr_type = data.arrival_type or "walk_in"
+        if arr_type == "ambulance":
+            initial_status = WorkflowStatus.EN_ROUTE.value
+        elif arr_type == "referral":
+            initial_status = WorkflowStatus.INTAKE_SUBMITTED.value
+        else:
+            initial_status = WorkflowStatus.ARRIVED.value
 
+        # Generate a collision-safe Case ID (e.g. PRA-2026-6F24A1)
+        uuid_hex = uuid.uuid4().hex[:6].upper()
+        case_id = f"PRA-2026-{uuid_hex}"
+
+        from app.services.workflow_service import to_db_status
         # 2. Insert emergency intake
-        intake_result = supabase.table("emergency_intake").insert({
+        intake_row = intake_repository.create({
             "patient_id": patient_id,
+            "case_id": case_id,
+            "arrival_type": arr_type,
             "ambulance_eta": data.ambulance_eta,
             "emergency_description": data.emergency_description,
             "chief_complaint": data.chief_complaint,
-            "status": "intake_pending",
-        }).execute()
+            "status": to_db_status(initial_status),
+        })
 
-        if not intake_result.data:
-            _rollback()
-            raise HTTPException(status_code=500, detail="Failed to insert emergency intake record")
+        intake_id = intake_row["id"]
 
-        intake_id = intake_result.data[0]["id"]
+        # Log initial status transition
+        log_status_transition(
+            intake_id=intake_id,
+            old_status=None,
+            new_status=initial_status,
+            actor_type="Nurse",
+            actor_name="Intake Nurse",
+            reason="Patient registered at triage desk."
+        )
+
+        # For Walk-in, immediately transition Arrived -> Awaiting Doctor Approval
+        if initial_status == WorkflowStatus.ARRIVED.value:
+            update_workflow_status(
+                intake_id=intake_id,
+                new_status=WorkflowStatus.AWAITING_APPROVAL.value,
+                actor_type="System",
+                actor_name="Triage Pipeline",
+                reason="Patient checked in for clinical triage."
+            )
 
         # 3. Insert vitals
         try:
-            vitals_result = supabase.table("vitals").insert({
+            vitals_row = vitals_repository.create({
                 "patient_id": patient_id,
                 "intake_id": intake_id,
                 "heart_rate": data.vitals.heart_rate,
@@ -87,9 +127,7 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
                 "bp_diastolic": data.vitals.bp_diastolic,
                 "temperature": data.vitals.temperature,
                 "respiratory_rate": data.vitals.respiratory_rate,
-            }).execute()
-            if not vitals_result.data:
-                raise Exception("Vitals insert returned empty data")
+            })
             vitals_saved = True
         except Exception as vitals_err:
             logger.error("[PRATHAM] Vitals insert failed - rolling back: %s", vitals_err)
@@ -101,7 +139,7 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
 
         # 4. Insert symptoms
         try:
-            supabase.table("symptoms").insert({
+            symptoms_repository.create({
                 "intake_id": intake_id,
                 "chest_pain": data.symptoms.chest_pain,
                 "breathlessness": data.symptoms.breathlessness,
@@ -109,12 +147,12 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
                 "bleeding": data.symptoms.bleeding,
                 "unconsciousness": data.symptoms.unconsciousness,
                 "neurological_symptoms": data.symptoms.neurological_symptoms,
-            }).execute()
+            })
         except Exception as sym_err:
             logger.error("[PRATHAM] Symptoms insert failed - rolling back: %s", sym_err)
             # Also clean up vitals
             try:
-                supabase.table("vitals").delete().eq("intake_id", intake_id).execute()
+                vitals_repository.delete_by_intake_id(intake_id)
             except Exception:
                 pass
             _rollback()
@@ -137,11 +175,11 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
             logger.error("[PRATHAM] Pipeline initialization failed - rolling back intake: %s", init_err)
             # Also clean up vitals + symptoms
             try:
-                supabase.table("symptoms").delete().eq("intake_id", intake_id).execute()
+                symptoms_repository.delete_by_intake_id(intake_id)
             except Exception:
                 pass
             try:
-                supabase.table("vitals").delete().eq("intake_id", intake_id).execute()
+                vitals_repository.delete_by_intake_id(intake_id)
             except Exception:
                 pass
             _rollback()
@@ -189,7 +227,7 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
                 if flag_key in nlp_flags:
                     nlp_row[flag_key] = nlp_flags[flag_key]
 
-            supabase.table("nlp_extractions").insert(nlp_row).execute()
+            nlp_repository.create(nlp_row)
             mark_completed(intake_id, "nlp")
         except Exception as nlp_err:
             logger.warning("[PRATHAM] NLP extraction failed (non-fatal): %s", nlp_err)
@@ -223,15 +261,13 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
         try:
             risk_scores = calculate_risk_scores(vitals_dict, symptoms_dict, nlp_flags)
 
-            supabase.table("risk_scores").insert({
+            risk_scores_repository.create({
                 "intake_id": intake_id,
                 **risk_scores,
-            }).execute()
+            })
 
             # Update intake severity
-            supabase.table("emergency_intake").update({
-                "severity_level": risk_scores["overall_severity"],
-            }).eq("id", intake_id).execute()
+            intake_repository.update_severity(intake_id, risk_scores["overall_severity"])
 
             mark_completed(intake_id, "risk")
         except Exception as risk_err:
@@ -240,11 +276,11 @@ async def create_intake(data: EmergencyIntakeCreate) -> IntakeResponse:
         # Step C: Preparation alerts
         alerts = generate_preparation_alerts(risk_scores)
         for alert_type in alerts:
-            supabase.table("preparation_alerts").insert({
-                "intake_id": intake_id,
-                "alert_type": alert_type,
-                "status": "pending",
-            }).execute()
+            preparation_alerts_repository.create_alert(
+                intake_id=intake_id,
+                alert_type=alert_type,
+                status="pending",
+            )
 
         # Step D: Investigation recommendations (visit-type aware)
         from app.services.visit_classifier import classify_visit, get_routine_investigations
@@ -294,40 +330,38 @@ async def get_intake(intake_id: str):
     """
     try:
         # 1. Fetch intake
-        intake_res = supabase.table("emergency_intake").select("*").eq("id", intake_id).execute()
-        if not intake_res.data:
+        intake = intake_repository.get_by_id(intake_id)
+        if not intake:
             raise HTTPException(status_code=404, detail="Intake not found")
-        intake = intake_res.data[0]
         patient_id = intake.get("patient_id")
 
         # 2. Fetch patient
         patient = {}
         if patient_id:
-            pat_res = supabase.table("patients").select("*").eq("id", patient_id).execute()
-            if pat_res.data:
-                patient = pat_res.data[0]
+            pat_row = patients_repository.get_by_id(patient_id)
+            if pat_row:
+                patient = pat_row
 
         # 3. Fetch vitals
         vitals = {}
-        vitals_res = supabase.table("vitals").select("*").eq("intake_id", intake_id).execute()
-        if vitals_res.data:
-            vitals = vitals_res.data[0]
+        vitals_row = vitals_repository.get_by_intake_id(intake_id)
+        if vitals_row:
+            vitals = vitals_row
 
         # 4. Fetch symptoms
         symptoms = {}
-        syms_res = supabase.table("symptoms").select("*").eq("intake_id", intake_id).execute()
-        if syms_res.data:
-            symptoms = syms_res.data[0]
+        syms_row = symptoms_repository.get_by_intake_id(intake_id)
+        if syms_row:
+            symptoms = syms_row
 
         # 5. Fetch risk scores
         risk = {}
-        risk_res = supabase.table("risk_scores").select("*").eq("intake_id", intake_id).execute()
-        if risk_res.data:
-            risk = risk_res.data[0]
+        risk_row = risk_scores_repository.get_by_intake_id(intake_id)
+        if risk_row:
+            risk = risk_row
 
         # 6. Fetch preparation alerts
-        alerts_res = supabase.table("preparation_alerts").select("*").eq("intake_id", intake_id).execute()
-        alerts_data = alerts_res.data or []
+        alerts_data = preparation_alerts_repository.get_by_intake_id(intake_id)
 
         # 7. Fetch investigation recommendations
         inv_res = supabase.table("investigation_recommendations").select("*").eq("intake_id", intake_id).execute()
@@ -384,8 +418,8 @@ async def get_intake(intake_id: str):
         # Alerts mapping
         prep_alerts = []
         for a in alerts_data:
-            alert_type = a.get("alert_type")
-            status = a.get("status")
+            alert_type = a.get("alert_type") or "unknown"
+            status = a.get("status") or ""
             prep_alerts.append({
                 "label": alert_type.replace("_", " ").title(),
                 "active": status == "pending" or status == "active",
