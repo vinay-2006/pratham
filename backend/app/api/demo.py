@@ -95,6 +95,8 @@ async def load_demo_case(case_id: str) -> Dict[str, Any]:
             "gender": case["sex"],
             "date_of_birth": "1980-01-01",
         }).execute()
+        if not p_res.data:
+            raise HTTPException(status_code=500, detail="Failed to create demo patient — insert returned no data")
         patient_id = p_res.data[0]["id"]
 
         # 2. Create Intake
@@ -105,6 +107,8 @@ async def load_demo_case(case_id: str) -> Dict[str, Any]:
             "status": "intake_completed",
             "severity_level": case["vitals"].get("spo2", 98) < 90 and "CRITICAL" or "MODERATE"
         }).execute()
+        if not i_res.data:
+            raise HTTPException(status_code=500, detail="Failed to create demo intake — insert returned no data")
         intake_id = i_res.data[0]["id"]
 
         # 3. Create Vitals
