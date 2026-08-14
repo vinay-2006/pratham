@@ -652,8 +652,17 @@ async def get_patient_detail(intake_id: str):
         bp_str = f"{bp_systolic}/{bp_diastolic}" if bp_systolic and bp_diastolic else "—"
 
         # Resolve canonical workflow status (SSOT = workflow_logs)
+        # When workflow_logs has no entry, apply canonical map to known legacy DB values.
         _raw_intake_status = intake.get("status", "")
-        _canonical_status = workflow_repository.get_latest_status(intake_id) or _raw_intake_status
+        _STATUS_CANONICAL_MAP = {
+            "investigation_approved": "investigations_approved",
+            "intake_pending": "intake_submitted",
+        }
+        _wf_status = workflow_repository.get_latest_status(intake_id)
+        if _wf_status:
+            _canonical_status = _wf_status
+        else:
+            _canonical_status = _STATUS_CANONICAL_MAP.get(_raw_intake_status, _raw_intake_status)
 
         return {
             "intake_id": intake_id,

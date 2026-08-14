@@ -72,6 +72,27 @@ _DEFAULT_PIPELINE_STATUS: Dict[str, str] = {
     "imaging": "pending", "aggregation": "pending",
 }
 
+# Known legacy DB values → canonical WorkflowStatus values.
+# Applied when workflow_logs has no entry for an intake, so the raw DB
+# status must be normalized before reaching the frontend.
+_STATUS_CANONICAL_MAP: Dict[str, str] = {
+    "investigation_approved":  WorkflowStatus.APPROVED.value,   # investigations_approved
+    "intake_pending":          WorkflowStatus.INTAKE_SUBMITTED.value,
+}
+
+
+def _normalize_patient_row(raw: Any) -> dict:
+    """
+    Normalize Supabase joined `patients` value.
+    Depending on the FK relationship shape, this may be a dict, a list, or None.
+    Consistent with command_center_service._normalize_patient_row.
+    """
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, list) and raw:
+        return raw[0]
+    return {}
+
 
 def _count_evidence_uploaded(
     approved_inv_ids: List[str],
@@ -132,13 +153,19 @@ async def get_queue_items() -> List[Dict[str, Any]]:
     intake_ids = [intake["id"] for intake in result_data]
 
     # ── Parallel batch fetches (three independent IO-bound reads) ─────────────
+    # Repository errors propagate — a DB failure must NOT appear as
+    # "0 investigations" or "0 evidence" to the clinician.
+    # Single retry handles transient Supabase "Server disconnected" in to_thread.
     def _batch_investigations() -> List[Dict]:
         try:
             return investigation_repository.get_by_intake_ids(
                 intake_ids, columns="id, intake_id, status"
             )
         except Exception:
-            return []
+            logger.warning("[Queue] Investigation fetch retry after transient error")
+            return investigation_repository.get_by_intake_ids(
+                intake_ids, columns="id, intake_id, status"
+            )
 
     def _batch_evidence() -> List[Dict]:
         try:
@@ -146,12 +173,10 @@ async def get_queue_items() -> List[Dict[str, Any]]:
                 intake_ids, columns="intake_id, investigation_id"
             )
         except Exception:
-            try:
-                return evidence_repository.get_by_intake_ids(
-                    intake_ids, columns="intake_id"
-                )
-            except Exception:
-                return []
+            # Retry with minimal columns (some schemas lack investigation_id)
+            return evidence_repository.get_by_intake_ids(
+                intake_ids, columns="intake_id"
+            )
 
     def _batch_pipeline() -> Dict[str, Dict]:
         from app.services.pipeline_status_service import get_batch_pipeline_status
@@ -161,7 +186,8 @@ async def get_queue_items() -> List[Dict[str, Any]]:
         try:
             return workflow_repository.get_batch_latest_status(intake_ids)
         except Exception:
-            return {}
+            logger.warning("[Queue] Workflow status fetch retry after transient error")
+            return workflow_repository.get_batch_latest_status(intake_ids)
 
     all_investigations, all_evidence, pipeline_by_intake, canonical_statuses = await asyncio.gather(
         asyncio.to_thread(_batch_investigations),
@@ -186,17 +212,21 @@ async def get_queue_items() -> List[Dict[str, Any]]:
         iid            = intake["id"]
         raw_db_status  = intake.get("status", "intake_submitted")
 
-        # Resolve canonical workflow status from workflow_logs (SSOT)
-        # Falls back to raw DB status if no workflow log exists
-        current_status = canonical_statuses.get(iid, raw_db_status)
+        # Resolve canonical workflow status from workflow_logs (SSOT).
+        # When workflow_logs has no entry for this intake, apply
+        # _STATUS_CANONICAL_MAP to normalize known legacy DB values.
+        if iid in canonical_statuses:
+            current_status = canonical_statuses[iid]
+        else:
+            current_status = _STATUS_CANONICAL_MAP.get(raw_db_status, raw_db_status)
 
         # Closed and offline cases are not shown in the nurse queue
         if current_status in _EXCLUDED_STATUSES:
             continue
 
-        patient_row = intake.get("patients") or {}
+        patient_row = _normalize_patient_row(intake.get("patients"))
         risk_rows   = intake.get("risk_scores") or []
-        risk_row    = risk_rows[0] if risk_rows else {}
+        risk_row    = risk_rows[0] if isinstance(risk_rows, list) and risk_rows else {}
 
         name     = build_display_name(patient_row)
         age      = compute_age(patient_row.get("date_of_birth"))
