@@ -29,8 +29,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import {
+  validateFile,
+  EVIDENCE_FORMATS,
+} from "@/lib/upload-validator";
 
-const API_BASE = "http://localhost:8000/api";
+import { API_BASE } from "@/lib/api-config";
 
 export interface EvidenceFile {
   evidence_id: string;
@@ -120,8 +124,19 @@ export function InvestigationUploadRow({ intakeId, investigation, onUploaded }: 
   const isNeedsInfo = status === "needs_info";
   const hasFiles = evidence.length > 0;
 
+
+  const formatSpec = EVIDENCE_FORMATS[evidence_type];
+
   const handleFile = async (file: File) => {
     if (!file) return;
+
+    // Centralized upload validation
+    const validation = validateFile(file, evidence_type);
+    if (!validation.valid) {
+      toast.error(validation.error || "This investigation accepts only supported file formats.");
+      return;
+    }
+
     setUploading(true);
     try {
       // In Replace mode: delete all existing evidence for this investigation first
@@ -182,13 +197,10 @@ export function InvestigationUploadRow({ intakeId, investigation, onUploaded }: 
     }
   };
 
-  const SUPPORTED_INVESTIGATIONS = [
-    "Chest X-ray", "CT Brain", "CT Chest", "Echocardiogram", "FAST Ultrasound",
-    "CBC", "Basic Metabolic Panel", "Urinalysis", "Blood Glucose", "Troponin",
-    "ABG", "D-Dimer", "Cardiac Enzymes", "Coagulation Profile", "Blood Group & Cross-match", "Electrolytes"
-  ];
-  const isSupported = SUPPORTED_INVESTIGATIONS.includes(investigation_type);
-  const canAnalyze = isApproved && hasFiles && !analysis_result && isSupported && (evidence_type === "xray" || evidence_type === "lab_report");
+  const canAnalyze = isApproved && !analysis_result && (
+    (evidence_type === "xray" && hasFiles) ||
+    (evidence_type === "lab_report" && hasFiles)
+  );
 
   const handleRunAnalysis = async () => {
     setAnalyzing(true);
@@ -200,7 +212,7 @@ export function InvestigationUploadRow({ intakeId, investigation, onUploaded }: 
           evidence_id: xrayEvidence.evidence_id,
         });
         toast.success("Imaging analysis complete", {
-          description: "Chest imaging classification finished.",
+          description: "Imaging classification finished.",
         });
       } else if (evidence_type === "lab_report") {
         await axios.post(`${API_BASE}/lab/analyze`, {
@@ -234,6 +246,8 @@ export function InvestigationUploadRow({ intakeId, investigation, onUploaded }: 
     const file = e.dataTransfer.files[0];
     if (file) handleFile(file);
   };
+
+
 
   return (
     <div
@@ -325,7 +339,7 @@ export function InvestigationUploadRow({ intakeId, investigation, onUploaded }: 
           ref={fileRef}
           type="file"
           className="hidden"
-          accept=".jpg,.jpeg,.png,.pdf,.txt"
+          accept={formatSpec?.extensions.join(",")}
           onChange={onInputChange}
         />
       </div>
@@ -355,7 +369,33 @@ export function InvestigationUploadRow({ intakeId, investigation, onUploaded }: 
               <>Drop file here or <span className="text-emerald-700 hover:underline">browse</span></>
             )}
           </span>
-          <span className="text-[10px] text-slate-600 dark:text-gray-400 font-medium">JPG · PNG · PDF · TXT · max 10 MB</span>
+          <span className="text-[10px] text-slate-600 dark:text-gray-400 font-medium">
+            {formatSpec?.supported.join(" · ")} · max {MAX_FILE_SIZE_MB} MB
+          </span>
+        </div>
+      )}
+
+      {/* ── Supported formats table ── */}
+      {isApproved && formatSpec && (
+        <div className="mt-3 rounded border border-slate-200 bg-slate-50/50 p-3 text-[11px] dark:border-slate-800 dark:bg-slate-900/30 space-y-2">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="font-bold text-slate-700 dark:text-slate-300 mb-1">Accepted formats:</div>
+              <div className="text-muted-foreground font-semibold space-y-0.5">
+                <div>PNG</div>
+                <div>JPEG</div>
+                <div>JPG</div>
+                <div>DICOM (.dcm)</div>
+              </div>
+            </div>
+            <div>
+              <div className="font-bold text-slate-700 dark:text-slate-300 mb-1">Maximum size:</div>
+              <div className="text-muted-foreground font-semibold">10 MB</div>
+            </div>
+          </div>
+          <div className="pt-2 border-t border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 font-semibold italic">
+            Only single frontal chest radiographs are supported.
+          </div>
         </div>
       )}
 
@@ -499,8 +539,8 @@ export function InvestigationUploadRow({ intakeId, investigation, onUploaded }: 
         </div>
       )}
 
-      {/* ── No analysis placeholder (only for non-analyzable / unsupported types) ── */}
-      {isApproved && !analysis_result && !canAnalyze && (
+      {/* ── No analysis placeholder (approved, not analyzed, analysis applicable) ── */}
+      {isApproved && !analysis_result && !canAnalyze && (evidence_type === "xray" || evidence_type === "lab_report") && (
         <div className="mt-3 rounded-md border-2 border-dashed border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 px-3 py-2.5">
           <div className="flex items-center gap-2">
             <FlaskConical className="h-3.5 w-3.5 shrink-0 text-slate-700 dark:text-gray-400" />
@@ -512,7 +552,7 @@ export function InvestigationUploadRow({ intakeId, investigation, onUploaded }: 
             </span>
           </div>
           <p className="mt-1 pl-5 text-[10px] font-medium text-slate-700 dark:text-gray-400">
-            {!isSupported ? "Analysis not available in this version" : "No AI analysis model available for this file type."}
+            Awaiting file upload to proceed with analysis.
           </p>
         </div>
       )}

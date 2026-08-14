@@ -29,12 +29,11 @@ import type { InvestigationRow } from "./investigation-upload-row";
 import { PipelineStatus } from "./pipeline-status";
 import { PatientTimeline } from "./patient-timeline";
 import { cn } from "@/lib/utils";
+import { Plus, Check, Loader2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Plus, Check, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-
-const API_BASE = "http://localhost:8000/api";
+import { API_BASE } from "@/lib/api-config";
 
 interface PatientDetail {
   intake_id: string;
@@ -133,10 +132,11 @@ export function PatientWorkspace({ intakeId }: Props) {
     }
   };
 
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isLoading, isError, error, refetch: refetchDetail } = useQuery({
     queryKey: ["patient-detail", intakeId],
     queryFn: () => fetchPatientDetail(intakeId),
     staleTime: 5_000,  // short stale time — evidence uploads need fast refresh
+    retry: 2,
   });
 
   const refetch = () => {
@@ -148,10 +148,28 @@ export function PatientWorkspace({ intakeId }: Props) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Activity className="h-4 w-4 animate-pulse text-primary" />
-          Loading patient data…
+      <div className="space-y-6 py-6 animate-pulse">
+        {/* Vitals Skeleton */}
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="h-14 rounded-xl bg-slate-100 dark:bg-slate-800" />
+          ))}
+        </div>
+        {/* Symptoms Skeleton */}
+        <div className="space-y-2">
+          <div className="h-4 w-24 bg-slate-200 dark:bg-slate-700 rounded" />
+          <div className="flex gap-2 flex-wrap">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-8 w-20 bg-slate-100 dark:bg-slate-800 rounded-full" />
+            ))}
+          </div>
+        </div>
+        {/* Investigations Skeleton */}
+        <div className="space-y-3">
+          <div className="h-4 w-32 bg-slate-200 dark:bg-slate-700 rounded" />
+          {[...Array(2)].map((_, i) => (
+            <div key={i} className="h-16 rounded-xl bg-slate-100 dark:bg-slate-800" />
+          ))}
         </div>
       </div>
     );
@@ -159,11 +177,24 @@ export function PatientWorkspace({ intakeId }: Props) {
 
   if (isError) {
     return (
-      <div className="flex items-center gap-2 rounded-lg border border-rose-500/20 bg-rose-500/5 p-4 text-sm text-rose-400">
-        <AlertCircle className="h-4 w-4 shrink-0" />
-        {axios.isAxiosError(error)
-          ? error.response?.data?.detail ?? "Failed to load patient data."
-          : "Failed to load patient data."}
+      <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-5 text-sm text-rose-800 dark:text-rose-400 space-y-3">
+        <div className="flex items-center gap-2">
+          <AlertCircle className="h-4 w-4 shrink-0 text-rose-500" />
+          <span className="font-bold">Failed to load patient data</span>
+        </div>
+        <p className="text-xs text-rose-600 dark:text-rose-400/80">
+          {axios.isAxiosError(error)
+            ? error.response?.data?.detail ?? error.message
+            : "An unexpected error occurred while querying the server."}
+        </p>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => refetchDetail()}
+          className="border-rose-500/30 hover:bg-rose-500/10 text-rose-700 dark:text-rose-300 font-semibold"
+        >
+          Retry Load
+        </Button>
       </div>
     );
   }
@@ -286,15 +317,6 @@ export function PatientWorkspace({ intakeId }: Props) {
         </div>
       )}
 
-      {/* ── AI Pipeline Status ─────────────────────────────────── */}
-      {pipeline_status && (
-        <div className="rounded-lg border-2 border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-800/50 p-3">
-          <div className="mb-2 text-[11px] font-bold uppercase tracking-[0.15em] text-slate-800 dark:text-gray-200">
-            AI Pipeline Status
-          </div>
-          <PipelineStatus status={pipeline_status} />
-        </div>
-      )}
 
       {/* ── Investigations ────────────────────────────────────── */}
       <div>
