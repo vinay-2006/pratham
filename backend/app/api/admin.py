@@ -10,7 +10,8 @@ import logging
 import os
 from typing import Any, Dict
 from fastapi import APIRouter
-from app.db.supabase_client import supabase
+from app.domains.pipeline.repository import pipeline_repository
+from app.domains.triage.repository import intake_repository
 
 logger = logging.getLogger(__name__)
 
@@ -23,15 +24,7 @@ def _query_live_latencies() -> Dict[str, float]:
     latencies: Dict[str, float] = {}
     for stage in stages:
         try:
-            res = (
-                supabase.table("pipeline_status")
-                .select("duration_ms")
-                .eq("stage", stage)
-                .eq("status", "completed")
-                .not_.is_("duration_ms", "null")
-                .execute()
-            )
-            durations = [r["duration_ms"] for r in (res.data or []) if r.get("duration_ms")]
+            durations = pipeline_repository.get_completed_durations(stage)
             latencies[stage] = round(sum(durations) / len(durations) / 1000, 2) if durations else 0.0
         except Exception as exc:
             logger.warning("[Admin API] Could not query latency for stage %s: %s", stage, exc)
@@ -48,19 +41,12 @@ async def get_system_admin_metrics() -> Dict[str, Any]:
     total_intakes = 0
     failed_count = 0
     try:
-        intake_res = supabase.table("emergency_intake").select("id", count="exact").execute()
-        total_intakes = intake_res.count or len(intake_res.data or [])
+        total_intakes = intake_repository.count_all()
     except Exception as exc:
         logger.warning("[Admin API] Failed to query intake count: %s", exc)
 
     try:
-        failed_res = (
-            supabase.table("pipeline_status")
-            .select("id", count="exact")
-            .eq("status", "failed")
-            .execute()
-        )
-        failed_count = failed_res.count or 0
+        failed_count = pipeline_repository.count_by_status("failed")
     except Exception as exc:
         logger.warning("[Admin API] Failed to query failed pipeline count: %s", exc)
 

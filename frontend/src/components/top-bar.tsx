@@ -34,6 +34,13 @@ export function TopBar() {
   return (
     <>
       <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background/85 px-3 backdrop-blur md:px-5">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors hover:bg-muted"
+        >
+          ← Portfolio
+        </Link>
+        <Separator orientation="vertical" className="h-6" />
         <SidebarTrigger />
         <Separator orientation="vertical" className="h-6" />
 

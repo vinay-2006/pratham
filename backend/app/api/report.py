@@ -22,11 +22,16 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+from pydantic import BaseModel
+from typing import Optional
+
+class MarkReviewedRequest(BaseModel):
+    doctor_name: Optional[str] = "Doctor on Duty"
+
 @router.get("/report/{intake_id}", tags=["Clinical Report"])
 async def get_clinical_report(intake_id: str):
     """
     Consolidated Clinical Intelligence Report (JSON).
-    Returns all data needed for the doctor's full-page report in a single call.
     """
     try:
         return await get_complete_report(intake_id)
@@ -36,6 +41,43 @@ async def get_clinical_report(intake_id: str):
         raise
     except Exception as e:
         logger.error("[PRATHAM] Report endpoint error: %s", e)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/report/{intake_id}/mark-reviewed", tags=["Clinical Report"])
+async def mark_report_reviewed(intake_id: str, data: Optional[MarkReviewedRequest] = None):
+    """
+    Explicitly transition the intake status from REPORT_READY to UNDER_REVIEW.
+    """
+    try:
+        from app.domains.triage.repository import intake_repository
+        from app.models.workflow import WorkflowStatus
+        from app.services.workflow_service import update_workflow_status, get_workflow_status
+        
+        doctor_name = data.doctor_name if data else "Doctor on Duty"
+        
+        intake_row = intake_repository.get_by_id(intake_id, columns="status")
+        if not intake_row:
+            raise HTTPException(status_code=404, detail=f"Intake {intake_id} not found")
+            
+        current_status = intake_row.get("status")
+        current_canonical = get_workflow_status(intake_id, current_status)
+        
+        if current_canonical == WorkflowStatus.REPORT_READY.value:
+            success = update_workflow_status(
+                intake_id=intake_id,
+                new_status=WorkflowStatus.UNDER_REVIEW.value,
+                actor_type="Doctor",
+                actor_name=doctor_name,
+                reason="Doctor opened clinical report."
+            )
+            return {"status": "success", "transitioned": success}
+            
+        return {"status": "skipped", "reason": f"Current status is {current_canonical}, not REPORT_READY"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("[PRATHAM] Failed to mark report reviewed: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

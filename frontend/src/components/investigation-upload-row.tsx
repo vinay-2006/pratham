@@ -32,6 +32,7 @@ import { toast } from "sonner";
 import {
   validateFile,
   EVIDENCE_FORMATS,
+  MAX_FILE_SIZE_MB,
 } from "@/lib/upload-validator";
 
 import { API_BASE } from "@/lib/api-config";

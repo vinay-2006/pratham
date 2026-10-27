@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from "react";
-import { Check, HelpCircle, X, Clock, Plus, ChevronRight, AlertTriangle, FileText } from "lucide-react";
+import { Check, HelpCircle, X, Clock, Plus, ChevronRight, AlertTriangle, FileText, RefreshCw } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import axios from "axios";
 import { Card, CardContent } from "@/components/ui/card";
@@ -20,7 +20,7 @@ import type { DoctorNotification } from "@/lib/mock-data";
 
 import { toast } from "sonner";
 
-const API_BASE = "http://localhost:8000/api";
+import { API_BASE } from "@/lib/api-config";
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
@@ -280,6 +280,205 @@ function InvestigationChecklist({
   );
 }
 
+// ─── Update Investigations Dialog ─────────────────────────────────────────────
+
+interface UpdateDialogProps {
+  n: DoctorNotification;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}
+
+function UpdateInvestigationsDialog({ n, open, onOpenChange }: UpdateDialogProps) {
+  const { refreshNotifications } = useCase();
+  const [loading, setLoading] = useState(false);
+  const [eligible, setEligible] = useState<boolean | null>(null);
+  const [investigations, setInvestigations] = useState<{ investigation_type: string; status: string }[]>([]);
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [customTests, setCustomTests] = useState<string[]>([]);
+  const [customInput, setCustomInput] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Fetch eligibility + current investigation state when dialog opens
+  const fetchEligibility = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data } = await axios.get(`${API_BASE}/investigations/${n.intake_id}/update-eligibility`);
+      setEligible(data.eligible);
+      if (data.eligible && data.current_investigations) {
+        setInvestigations(data.current_investigations);
+        // Pre-populate: approved = checked, everything else = unchecked
+        const checkedMap: Record<string, boolean> = {};
+        for (const inv of data.current_investigations) {
+          checkedMap[inv.investigation_type] = inv.status === "approved";
+        }
+        setChecked(checkedMap);
+        setCustomTests([]);
+        setCustomInput("");
+      } else {
+        toast.error("Cannot update investigations", { description: data.reason });
+        onOpenChange(false);
+      }
+    } catch (error) {
+      toast.error("Failed to check eligibility", {
+        description: axios.isAxiosError(error)
+          ? error.response?.data?.detail ?? error.message
+          : "Unexpected error",
+      });
+      onOpenChange(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [n.intake_id, onOpenChange]);
+
+  // Trigger eligibility check when dialog opens
+  const prevOpen = useRef(false);
+  if (open && !prevOpen.current) {
+    prevOpen.current = true;
+    fetchEligibility();
+  }
+  if (!open && prevOpen.current) {
+    prevOpen.current = false;
+  }
+
+  const toggleCheck = (key: string) =>
+    setChecked((prev) => ({ ...prev, [key]: !prev[key] }));
+
+  const addCustom = () => {
+    const val = customInput.trim();
+    if (!val) return;
+    if (checked[val] !== undefined || customTests.includes(val)) {
+      toast.error("Test already in list");
+      return;
+    }
+    setCustomTests((prev) => [...prev, val]);
+    setChecked((prev) => ({ ...prev, [val]: true }));
+    setCustomInput("");
+    inputRef.current?.focus();
+  };
+
+  const handleUpdate = async () => {
+    const existingApproved = investigations
+      .map((inv) => inv.investigation_type)
+      .filter((t) => checked[t]);
+    const approvedCustom = customTests.filter((t) => checked[t]);
+
+    setLoading(true);
+    try {
+      await axios.post(`${API_BASE}/investigations/update`, {
+        intake_id: n.intake_id,
+        approved_tests: existingApproved,
+        custom_tests: approvedCustom,
+        doctor_notes: "Investigation decision updated via Update Investigations",
+      });
+      toast.success("Investigations updated", {
+        description: `${n.patientName} · ${existingApproved.length + approvedCustom.length} investigation(s) approved.`,
+      });
+      onOpenChange(false);
+      refreshNotifications();
+    } catch (error) {
+      console.error("[PRATHAM] Update investigations failed:", error);
+      if (axios.isAxiosError(error) && error.response?.status === 409) {
+        toast.error("Update not allowed", {
+          description: error.response.data?.detail ?? "The case is no longer eligible for investigation updates.",
+        });
+        onOpenChange(false);
+      } else {
+        toast.error("Update failed", {
+          description: axios.isAxiosError(error)
+            ? error.response?.data?.detail ?? error.message
+            : "Unexpected error — please retry.",
+        });
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const allTests = [...investigations.map((i) => i.investigation_type), ...customTests];
+  const approvedCount = allTests.filter((t) => checked[t]).length;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="!flex !flex-col gap-0 p-0 sm:max-w-lg w-full overflow-hidden max-h-[85vh]">
+        <div className={cn("h-1 w-full rounded-t-lg shrink-0", urgencyBarStyles[n.urgency])} />
+
+        <DialogHeader className="shrink-0 px-6 pt-5 pb-4 border-b border-border/50">
+          <DialogTitle className="text-lg">Update Investigations</DialogTitle>
+          <DialogDescription>
+            {n.patientName} · {n.age}y {n.sex === "M" ? "Male" : "Female"} — Modify the approved investigation set.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex-1 overflow-y-auto min-h-0">
+          <div className="px-6 py-5">
+            {loading && eligible === null ? (
+              <div className="flex items-center justify-center py-8">
+                <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
+                <span className="ml-2 text-sm text-muted-foreground">Checking eligibility…</span>
+              </div>
+            ) : (
+              <>
+                {/* Test list */}
+                <div className="space-y-1.5 rounded-md border bg-muted/20 p-3">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    Investigations — check to approve
+                  </p>
+                  {allTests.map((inv) => (
+                    <label
+                      key={inv}
+                      className="flex cursor-pointer items-center gap-2.5 rounded px-1 py-1 text-sm hover:bg-muted/40 select-none"
+                    >
+                      <Checkbox
+                        id={`upd-chk-${n.id}-${inv}`}
+                        checked={!!checked[inv]}
+                        onCheckedChange={() => toggleCheck(inv)}
+                      />
+                      <span className={cn(!checked[inv] && "text-muted-foreground line-through")}>
+                        {inv}
+                        {customTests.includes(inv) && (
+                          <span className="ml-1.5 rounded bg-primary/15 px-1 py-0.5 text-[9px] font-medium text-primary">
+                            custom
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+
+                {/* Add custom test */}
+                <div className="mt-3 flex gap-2">
+                  <Input
+                    ref={inputRef}
+                    value={customInput}
+                    onChange={(e) => setCustomInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addCustom()}
+                    placeholder="Add custom test — e.g. D-Dimer, MRI Brain"
+                    className="h-8 text-xs"
+                  />
+                  <Button size="sm" variant="outline" className="h-8 shrink-0 px-3 text-xs" onClick={addCustom}>
+                    <Plus className="mr-1 h-3 w-3" /> Add
+                  </Button>
+                </div>
+
+                {/* Action buttons */}
+                <div className="mt-4 flex flex-wrap gap-2 border-t border-border/40 pt-4">
+                  <Button className="flex-1" onClick={handleUpdate} disabled={loading || approvedCount === 0}>
+                    <RefreshCw className={cn("mr-1.5 h-4 w-4", loading && "animate-spin")} />
+                    Update ({approvedCount} tests)
+                  </Button>
+                  <Button variant="outline" onClick={() => onOpenChange(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Patient detail dialog (centered, scrollable) ─────────────────────────────
 
 function PatientDetailDialog({
@@ -293,6 +492,7 @@ function PatientDetailDialog({
   onOpenChange: (v: boolean) => void;
   onApprove: () => void;
 }) {
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const vitals = n.vitals ? {
     heartRate: n.vitals.heartRate,
     spo2: n.vitals.spo2,
@@ -434,7 +634,7 @@ function PatientDetailDialog({
               </Section>
             )}
 
-            {/* Read-only pills for approved/rejected cards */}
+            {/* Read-only pills for approved/rejected cards + Update button */}
             {!pending && (
               <Section label="Investigations">
                 <div className="flex flex-wrap gap-1.5">
@@ -444,6 +644,23 @@ function PatientDetailDialog({
                     </span>
                   ))}
                 </div>
+                {n.status === "Approved" && (
+                  <div className="mt-3">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={(e) => { e.stopPropagation(); setUpdateDialogOpen(true); }}
+                    >
+                      <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                      Update Investigations
+                    </Button>
+                    <UpdateInvestigationsDialog
+                      n={n}
+                      open={updateDialogOpen}
+                      onOpenChange={setUpdateDialogOpen}
+                    />
+                  </div>
+                )}
               </Section>
             )}
 
@@ -469,6 +686,7 @@ function PatientDetailDialog({
 export function NotificationCard({ n }: { n: DoctorNotification }) {
   const { approveNotification, rejectNotification, requestInfoNotification, refreshNotifications } = useCase();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [updateDialogOpen, setUpdateDialogOpen] = useState(false);
   const submitRef = useRef<() => void>(() => {});
   const pending = n.status === "Pending Approval";
 
@@ -592,7 +810,20 @@ export function NotificationCard({ n }: { n: DoctorNotification }) {
                   System-generated · No nurse manually forwarded this request.
                 </p>
               )}
-              <div className="pt-2" onClick={(e) => e.stopPropagation()}>
+              <div className="pt-2 flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
+                {n.status === "Approved" && (
+                  <>
+                    <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setUpdateDialogOpen(true); }}>
+                      <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+                      Update Investigations
+                    </Button>
+                    <UpdateInvestigationsDialog
+                      n={n}
+                      open={updateDialogOpen}
+                      onOpenChange={setUpdateDialogOpen}
+                    />
+                  </>
+                )}
                 <Button asChild size="sm" variant="outline">
                   <Link to="/doctor/report/$intakeId" params={{ intakeId: n.intake_id }}>
                     <FileText className="mr-1.5 h-3.5 w-3.5" />

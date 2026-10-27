@@ -1,12 +1,7 @@
 """
-pdf_generator.py — Generate a 17-section clinical PDF from the unified Report DTO.
+pdf_generator.py — Generate a clinician-first 12-section monochrome PDF.
 
-Uses ReportLab Platypus for structured, multi-page A4 layout.
-Input: dict returned by report_service.get_complete_report()
-
-PRATHAM v1: Rebuilt to match the 17-section clinical architecture.
-Hides internal model names. Includes LLM narratives, confidence audit trail,
-uncertainty engine output, clinical limitations, and report quality metadata.
+Uses ReportLab Platypus for structured, minimal A4 hospital report layout.
 """
 
 from __future__ import annotations
@@ -20,7 +15,7 @@ from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import mm, cm
+from reportlab.lib.units import mm
 from reportlab.platypus import (
     SimpleDocTemplate,
     Paragraph,
@@ -34,35 +29,16 @@ from reportlab.platypus import (
 
 logger = logging.getLogger(__name__)
 
-# ── Colour palette ───────────────────────────────────────────────────────────
-PRIMARY = colors.HexColor("#2563EB")
-PRIMARY_LIGHT = colors.HexColor("#DBEAFE")
-PRIMARY_DARK = colors.HexColor("#1E40AF")
-CARD_BG = colors.HexColor("#F8FAFC")
-BORDER = colors.HexColor("#CBD5E1")
-MUTED = colors.HexColor("#64748B")
-DANGER = colors.HexColor("#DC2626")
-DANGER_BG = colors.HexColor("#FEF2F2")
-WARNING = colors.HexColor("#D97706")
-WARNING_BG = colors.HexColor("#FFFBEB")
-SUCCESS = colors.HexColor("#059669")
-SUCCESS_BG = colors.HexColor("#ECFDF5")
-TEXT_DARK = colors.HexColor("#0F172A")
-TEXT_SECONDARY = colors.HexColor("#334155")
+# ── Monochrome Hospital Palette (Task B10 & Monochrome) ─────────────────────
+COLOR_DARK = colors.HexColor("#1E293B")      # Dark Slate
+COLOR_TEXT = colors.HexColor("#334155")      # Slate
+COLOR_MUTED = colors.HexColor("#64748B")     # Muted gray
+COLOR_LINE = colors.HexColor("#E2E8F0")      # Light gray divider
+COLOR_BG_LIGHT = colors.HexColor("#F8FAFC")  # Off-white
 
-SEVERITY_COLORS = {
-    "critical": (DANGER, DANGER_BG),
-    "high": (colors.HexColor("#EA580C"), colors.HexColor("#FFF7ED")),
-    "moderate": (WARNING, WARNING_BG),
-    "low": (SUCCESS, SUCCESS_BG),
-}
-
-CONFIDENCE_COLORS = {
-    "VERY HIGH": SUCCESS,
-    "HIGH": colors.HexColor("#0284C7"),
-    "MODERATE": WARNING,
-    "LOW": DANGER,
-}
+# Status Colors (Monochrome indicators with slight tint if critical)
+COLOR_CRITICAL = colors.HexColor("#991B1B")  # Deep red for alert text only
+COLOR_NORMAL = colors.HexColor("#0F766E")    # Deep teal for completed/normal
 
 
 def _safe(val: Any, fallback: str = "—") -> str:
@@ -71,748 +47,360 @@ def _safe(val: Any, fallback: str = "—") -> str:
     return str(val)
 
 
-def _risk_color(value: int | float) -> colors.HexColor:
-    if value >= 70: return DANGER
-    if value >= 50: return colors.HexColor("#EA580C")
-    if value >= 30: return WARNING
-    return SUCCESS
-
-
-# ── Styles ───────────────────────────────────────────────────────────────────
+# ── ReportLab Styles ─────────────────────────────────────────────────────────
 
 def _build_styles():
     base = getSampleStyleSheet()
     return {
-        "title": ParagraphStyle("PDFTitle", parent=base["Title"], fontSize=22, leading=28, textColor=PRIMARY_DARK, spaceAfter=4*mm, alignment=TA_CENTER),
-        "subtitle": ParagraphStyle("PDFSubtitle", parent=base["Normal"], fontSize=10, leading=14, textColor=MUTED, alignment=TA_CENTER, spaceAfter=6*mm),
-        "section_heading": ParagraphStyle("PDFSectionHeading", parent=base["Heading2"], fontSize=12, leading=16, textColor=PRIMARY_DARK, spaceBefore=6*mm, spaceAfter=3*mm),
-        "body": ParagraphStyle("PDFBody", parent=base["Normal"], fontSize=9.5, leading=14, textColor=TEXT_DARK),
-        "body_bold": ParagraphStyle("PDFBodyBold", parent=base["Normal"], fontSize=9.5, leading=14, textColor=TEXT_DARK, fontName="Helvetica-Bold"),
-        "narrative": ParagraphStyle("PDFNarrative", parent=base["Normal"], fontSize=9.5, leading=15, textColor=TEXT_SECONDARY, leftIndent=6*mm),
-        "label": ParagraphStyle("PDFLabel", parent=base["Normal"], fontSize=8.5, leading=12, textColor=MUTED, fontName="Helvetica-Bold"),
-        "small": ParagraphStyle("PDFSmall", parent=base["Normal"], fontSize=8, leading=11, textColor=MUTED),
-        "footer": ParagraphStyle("PDFFooter", parent=base["Normal"], fontSize=7.5, leading=10, textColor=MUTED, alignment=TA_CENTER),
-        "placeholder": ParagraphStyle("PDFPlaceholder", parent=base["Normal"], fontSize=9, leading=13, textColor=MUTED, fontName="Helvetica-Oblique"),
-        "evidence_support": ParagraphStyle("PDFEvidenceSupport", parent=base["Normal"], fontSize=9, leading=13, textColor=SUCCESS, fontName="Helvetica"),
-        "evidence_conflict": ParagraphStyle("PDFEvidenceConflict", parent=base["Normal"], fontSize=9, leading=13, textColor=WARNING, fontName="Helvetica"),
+        "doc_title": ParagraphStyle("DocTitle", parent=base["Title"], fontSize=18, leading=22, textColor=COLOR_DARK, spaceAfter=2*mm, alignment=TA_LEFT),
+        "doc_subtitle": ParagraphStyle("DocSubtitle", parent=base["Normal"], fontSize=9, leading=12, textColor=COLOR_MUTED, spaceAfter=6*mm),
+        "section_heading": ParagraphStyle("SectionHeading", parent=base["Heading2"], fontSize=11, leading=14, textColor=COLOR_DARK, spaceBefore=4*mm, spaceAfter=2*mm, fontName="Helvetica-Bold"),
+        "body": ParagraphStyle("Body", parent=base["Normal"], fontSize=8.5, leading=12.5, textColor=COLOR_TEXT),
+        "body_bold": ParagraphStyle("BodyBold", parent=base["Normal"], fontSize=8.5, leading=12.5, textColor=COLOR_DARK, fontName="Helvetica-Bold"),
+        "body_italic": ParagraphStyle("BodyItalic", parent=base["Normal"], fontSize=8.5, leading=12.5, textColor=COLOR_MUTED, fontName="Helvetica-Oblique"),
+        "label": ParagraphStyle("Label", parent=base["Normal"], fontSize=8, leading=11, textColor=COLOR_MUTED, fontName="Helvetica-Bold"),
+        "small": ParagraphStyle("Small", parent=base["Normal"], fontSize=7.5, leading=10, textColor=COLOR_MUTED),
+        "footer": ParagraphStyle("Footer", parent=base["Normal"], fontSize=7, leading=9, textColor=COLOR_MUTED, alignment=TA_CENTER),
+        "critical_text": ParagraphStyle("CriticalText", parent=base["Normal"], fontSize=8.5, leading=12.5, textColor=COLOR_CRITICAL, fontName="Helvetica-Bold"),
     }
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
-
-def _heading(text: str, styles: dict) -> list:
+def _section_header(title: str, styles: dict) -> list:
     return [
-        KeepTogether([
-            Paragraph(text, styles["section_heading"]),
-            HRFlowable(width="100%", thickness=1.5, color=PRIMARY, spaceAfter=3*mm, spaceBefore=0),
-            Spacer(1, 18*mm),
-        ]),
-        Spacer(1, -18*mm),
-    ]
-
-
-def _kv_table(pairs: list[tuple[str, str]], styles: dict) -> Table:
-    data = []
-    for label, value in pairs:
-        data.append([
-            Paragraph(f"<b>{label}</b>", styles["label"]),
-            Paragraph(value, styles["body"]),
-        ])
-    t = Table(data, colWidths=[45*mm, None])
-    t.setStyle(TableStyle([
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("TOPPADDING", (0, 0), (-1, -1), 2),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-        ("LEFTPADDING", (0, 0), (0, -1), 0),
-    ]))
-    return t
-
-
-def _std_table_style():
-    return TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), PRIMARY),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("ALIGN", (1, 0), (-1, -1), "CENTER"),
-        ("GRID", (0, 0), (-1, -1), 0.5, BORDER),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, CARD_BG]),
-        ("TOPPADDING", (0, 0), (-1, -1), 4),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ("LEFTPADDING", (0, 0), (-1, -1), 6),
-    ])
-
-
-# ── Cover page ───────────────────────────────────────────────────────────────
-
-def _build_cover(report: dict, styles: dict) -> list:
-    ps = report["patient_summary"]
-    gen_at = report.get("generated_at", "")
-    try:
-        gen_str = datetime.fromisoformat(gen_at).strftime("%d %b %Y · %I:%M %p")
-    except Exception:
-        gen_str = gen_at
-
-    elements = [
-        Spacer(1, 20*mm),
-        Paragraph("PRATHAM", ParagraphStyle("CoverBrand", fontSize=32, leading=38, textColor=PRIMARY, alignment=TA_CENTER, fontName="Helvetica-Bold")),
         Spacer(1, 3*mm),
-        Paragraph("Clinical Intelligence Report", styles["title"]),
-        Spacer(1, 6*mm),
-        HRFlowable(width="60%", thickness=2, color=PRIMARY, spaceAfter=6*mm),
+        Paragraph(title, styles["section_heading"]),
+        HRFlowable(width="100%", thickness=1, color=COLOR_LINE, spaceAfter=3*mm, spaceBefore=1*mm),
     ]
 
-    for label, value in [
-        ("Patient", _safe(ps.get("name"))),
-        ("Age / Gender", f"{_safe(ps.get('age'))}y · {_safe(ps.get('gender')).title()}"),
-        ("Chief Complaint", _safe(ps.get("chief_complaint"))),
-        ("Severity", _safe(ps.get("severity")).upper()),
-        ("Generated", gen_str),
-    ]:
-        elements.append(Paragraph(
-            f'<font color="{MUTED.hexval()}" size="9"><b>{label}:</b></font>  '
-            f'<font color="{TEXT_DARK.hexval()}" size="10">{value}</font>',
-            ParagraphStyle("CoverKV", alignment=TA_CENTER, fontSize=10, leading=16),
-        ))
-        elements.append(Spacer(1, 1.5*mm))
 
-    elements.append(Spacer(1, 10*mm))
-
-    # Pipeline status
-    pipeline = report.get("pipeline_status", {})
-    elements.append(Paragraph('<font color="#64748B" size="9"><b>Analysis Pipeline</b></font>', ParagraphStyle("PipelineLabel", alignment=TA_CENTER, fontSize=9, leading=14)))
-    elements.append(Spacer(1, 2*mm))
-    parts = []
-    for stage in ["nlp", "risk", "lab", "imaging", "aggregation"]:
-        s = pipeline.get(stage, "pending")
-        icon = "✓" if s == "completed" else ("…" if s == "running" else "—")
-        clr = "#059669" if s == "completed" else ("#D97706" if s == "running" else "#94A3B8")
-        parts.append(f'<font color="{clr}">{icon} {stage.upper()}</font>')
-    elements.append(Paragraph("    ".join(parts), ParagraphStyle("PipelineStatus", alignment=TA_CENTER, fontSize=9, leading=14, fontName="Helvetica-Bold")))
-
-    # Clinical confidence on cover
-    conc = report.get("clinical_conclusions", {})
-    if conc.get("clinical_confidence"):
-        elements.append(Spacer(1, 6*mm))
-        conf = conc["clinical_confidence"]
-        conf_color = CONFIDENCE_COLORS.get(conf, MUTED)
-        elements.append(Paragraph(
-            f'<font color="{MUTED.hexval()}" size="9"><b>Clinical Confidence:</b></font>  '
-            f'<font color="{conf_color.hexval()}" size="11"><b>{conf}</b></font>',
-            ParagraphStyle("CoverConf", alignment=TA_CENTER, fontSize=11, leading=16, fontName="Helvetica-Bold"),
-        ))
-
-    elements.append(PageBreak())
-    return elements
-
-
-# ── Section builders ─────────────────────────────────────────────────────────
-
-def _s1_patient_summary(report: dict, styles: dict) -> list:
-    ps = report["patient_summary"]
-    elements = _heading("1. Patient Summary", styles)
-    pairs = [
-        ("Name", _safe(ps.get("name"))),
-        ("Age / Gender", f"{_safe(ps.get('age'))}y · {_safe(ps.get('gender')).title()}"),
-        ("Chief Complaint", _safe(ps.get("chief_complaint"), "No chief complaint recorded")),
-        ("Emergency Description", _safe(ps.get("emergency_description"), "No description")),
-        ("Severity", _safe(ps.get("severity")).upper()),
-        ("Allergies", ", ".join(ps.get("allergies") or []) or "None reported"),
-        ("Current Medications", ", ".join(ps.get("medications") or []) or "None reported"),
-        ("Medical History", ", ".join(ps.get("medical_history") or []) or "None reported"),
-    ]
-    elements.append(_kv_table(pairs, styles))
-    return elements
-
-
-def _s2_clinical_overview(report: dict, styles: dict) -> list:
-    interp = report.get("clinical_interpretation", {})
-    text = interp.get("clinical_overview", "")
-    if not text:
-        return []
-    elements = _heading("2. Clinical Overview", styles)
-    elements.append(Paragraph(text, styles["narrative"]))
-    return elements
-
-
-def _s3_vital_signs(report: dict, styles: dict) -> list:
-    v = report.get("vitals", {})
-    elements = _heading("3. Vital Signs", styles)
-
-    vital_data = [["Parameter", "Value", "Reference", "Status"]]
-    vitals_analysis = []
-
-    # Build from clinical reasoning facts if available
-    conc = report.get("clinical_conclusions", {})
-    dc = conc.get("data_completeness", {})
-
-    RANGES = {
-        "Heart Rate": (v.get("heart_rate"), "bpm", 60, 100),
-        "SpO₂": (v.get("spo2"), "%", 95, 100),
-        "Systolic BP": (v.get("bp_systolic"), "mmHg", 90, 140),
-        "Diastolic BP": (v.get("bp_diastolic"), "mmHg", 60, 90),
-        "Temperature": (v.get("temperature"), "°C", 36.1, 37.8),
-        "Respiratory Rate": (v.get("respiratory_rate"), "/min", 12, 20),
-    }
-
-    for param, (value, unit, low, high) in RANGES.items():
-        if value is None:
-            vital_data.append([param, "—", f"{low}–{high} {unit}", "—"])
-            continue
-        status = "Normal"
-        if value < low:
-            status = "LOW"
-        elif value > high:
-            status = "HIGH"
-        vital_data.append([param, f"{value} {unit}", f"{low}–{high} {unit}", status])
-
-    t = Table(vital_data, colWidths=[42*mm, 32*mm, 38*mm, 25*mm])
-    t.setStyle(_std_table_style())
-
-    # Colour abnormal statuses
-    for i in range(1, len(vital_data)):
-        st = vital_data[i][3]
-        if st in ("LOW", "HIGH"):
-            t.setStyle(TableStyle([
-                ("TEXTCOLOR", (3, i), (3, i), DANGER),
-                ("FONTNAME", (3, i), (3, i), "Helvetica-Bold"),
-            ]))
-
-    elements.append(t)
-    return elements
-
-
-def _s4_key_clinical_findings(report: dict, styles: dict) -> list:
-    elements = _heading("4. Key Clinical Findings", styles)
-    nlp = report.get("nlp_findings", {})
-    symptoms = report.get("symptoms", [])
-    risk = report.get("risk_engine", {})
-
-    # Symptoms
-    if symptoms:
-        elements.append(Paragraph("<b>Presenting Symptoms</b>", styles["body_bold"]))
-        elements.append(Spacer(1, 2*mm))
-        for s in symptoms:
-            elements.append(Paragraph(f"  •  {s}", styles["body"]))
-        elements.append(Spacer(1, 3*mm))
-
-    # NLP flags
-    flags = nlp.get("flags", {})
-    active = [k.replace("_", " ").title() for k, val in flags.items() if val]
-    if active:
-        elements.append(Paragraph("<b>Clinical Flags (NLP)</b>", styles["body_bold"]))
-        elements.append(Spacer(1, 2*mm))
-        for f in active:
-            elements.append(Paragraph(f"  ▸  {f}", styles["body"]))
-        elements.append(Spacer(1, 3*mm))
-
-    # NLP summary
-    summary = nlp.get("summary", "")
-    if summary:
-        elements.append(Paragraph("<b>Clinical Summary</b>", styles["body_bold"]))
-        elements.append(Spacer(1, 2*mm))
-        elements.append(Paragraph(summary, styles["narrative"]))
-        elements.append(Spacer(1, 3*mm))
-
-    # Risk scores table
-    risk_data = [["Category", "Score", "Level"]]
-    for cat in ["cardiac", "respiratory", "trauma", "neurological"]:
-        val = risk.get(cat, 0)
-        level = "HIGH" if val >= 70 else "ELEVATED" if val >= 50 else "MODERATE" if val >= 30 else "LOW"
-        risk_data.append([cat.title(), f"{val}/100", level])
-
-    t = Table(risk_data, colWidths=[50*mm, 30*mm, 35*mm])
-    t.setStyle(_std_table_style())
-    for i in range(1, len(risk_data)):
-        val = risk.get(risk_data[i][0].lower(), 0)
-        t.setStyle(TableStyle([("TEXTCOLOR", (2, i), (2, i), _risk_color(val)), ("FONTNAME", (2, i), (2, i), "Helvetica-Bold")]))
-    elements.append(t)
-
-    return elements
-
-
-def _s5_overall_impression(report: dict, styles: dict) -> list:
-    conc = report.get("clinical_conclusions", {})
-    interp = report.get("clinical_interpretation", {})
-    if not conc:
-        return []
-
-    elements = _heading("5. Overall Clinical Impression", styles)
-
-    primary = conc.get("primary_condition", "Pending")
-    confidence = conc.get("clinical_confidence", "MODERATE")
-    conf_color = CONFIDENCE_COLORS.get(confidence, MUTED)
-
-    elements.append(Paragraph(
-        f'<b>Most Likely Condition:</b>  <font color="{PRIMARY.hexval()}" size="11"><b>{primary}</b></font>',
-        styles["body"],
-    ))
-    elements.append(Spacer(1, 2*mm))
-    elements.append(Paragraph(
-        f'<b>Clinical Confidence:</b>  <font color="{conf_color.hexval()}"><b>{confidence}</b></font>',
-        styles["body"],
-    ))
-    elements.append(Spacer(1, 3*mm))
-
-    # Confidence audit trail
-    factors = conc.get("confidence_factors", [])
-    if factors:
-        elements.append(Paragraph("<b>Confidence Calculated From:</b>", styles["body_bold"]))
-        elements.append(Spacer(1, 1.5*mm))
-        for f in factors:
-            elements.append(Paragraph(f"  {f}", styles["small"]))
-        elements.append(Spacer(1, 3*mm))
-
-    # Uncertainty reasons
-    uncertainty = conc.get("uncertainty_reasons", [])
-    if uncertainty:
-        elements.append(Paragraph("<b>Why Certainty Is Reduced:</b>", styles["body_bold"]))
-        elements.append(Spacer(1, 1.5*mm))
-        for r in uncertainty:
-            elements.append(Paragraph(f"  ⚠ {r}", styles["evidence_conflict"]))
-        elements.append(Spacer(1, 3*mm))
-
-    # LLM narrative
-    if interp.get("overall_impression"):
-        elements.append(Paragraph(interp["overall_impression"], styles["narrative"]))
-        elements.append(Spacer(1, 3*mm))
-
-    # Supporting evidence
-    supporting = conc.get("supporting_evidence", [])
-    if supporting:
-        elements.append(Paragraph("<b>Supporting Evidence:</b>", styles["body_bold"]))
-        elements.append(Spacer(1, 1.5*mm))
-        for e in supporting:
-            elements.append(Paragraph(f"  ✓ {e}", styles["evidence_support"]))
-        elements.append(Spacer(1, 2*mm))
-
-    # Conflicting evidence
-    conflicting = conc.get("conflicting_evidence", [])
-    if conflicting:
-        elements.append(Paragraph("<b>Conflicting Evidence:</b>", styles["body_bold"]))
-        elements.append(Spacer(1, 1.5*mm))
-        for e in conflicting:
-            elements.append(Paragraph(f"  ⚠ {e}", styles["evidence_conflict"]))
-
-    return elements
-
-
-def _s6_alternative_considerations(report: dict, styles: dict) -> list:
-    conc = report.get("clinical_conclusions", {})
-    interp = report.get("clinical_interpretation", {})
-    alts = conc.get("alternative_conditions", [])
-    narrative = interp.get("alternative_considerations_narrative", "")
-    if not alts and not narrative:
-        return []
-
-    elements = _heading("6. Alternative Considerations", styles)
-
-    if narrative:
-        elements.append(Paragraph(narrative, styles["narrative"]))
-        elements.append(Spacer(1, 3*mm))
-
-    if alts:
-        alt_data = [["Condition", "Probability"]]
-        for a in alts:
-            prob = a.get("probability")
-            prob_str = f"{float(prob)*100:.1f}%" if prob is not None else "—"
-            alt_data.append([a.get("condition", "—"), prob_str])
-
-        t = Table(alt_data, colWidths=[70*mm, 40*mm])
-        t.setStyle(_std_table_style())
-        elements.append(t)
-
-    return elements
-
-
-def _s7_ranking_justification(report: dict, styles: dict) -> list:
-    conc = report.get("clinical_conclusions", {})
-    rj = conc.get("ranking_justification", {})
-    primary_reasons = rj.get("primary_reasons", [])
-    vs_alts = rj.get("vs_alternatives", [])
-    if not primary_reasons and not vs_alts:
-        return []
-
-    elements = _heading("7. Why This Condition Was Ranked Highest", styles)
-
-    if primary_reasons:
-        elements.append(Paragraph("<b>Supported By:</b>", styles["body_bold"]))
-        elements.append(Spacer(1, 1.5*mm))
-        for r in primary_reasons:
-            elements.append(Paragraph(f"  ✓ {r}", styles["evidence_support"]))
-        elements.append(Spacer(1, 3*mm))
-
-    for alt in vs_alts:
-        elements.append(Paragraph(f"<b>Ranked above {alt.get('condition', '')} because:</b>", styles["body_bold"]))
-        elements.append(Spacer(1, 1*mm))
-        for r in alt.get("reasons", []):
-            elements.append(Paragraph(f"  • {r}", styles["body"]))
-        elements.append(Spacer(1, 2*mm))
-
-    return elements
-
-
-def _s8_cardiac(report: dict, styles: dict) -> list:
-    elements = _heading("8. Cardiac Assessment", styles)
-    interp = report.get("clinical_interpretation", {})
-    text = interp.get("cardiac_summary", "")
-    if text:
-        elements.append(Paragraph(text, styles["narrative"]))
-    else:
-        risk = report.get("risk_engine", {})
-        elements.append(Paragraph(f"Cardiac risk score: {risk.get('cardiac', 0)}/100.", styles["body"]))
-    return elements
-
-
-def _s9_respiratory(report: dict, styles: dict) -> list:
-    elements = _heading("9. Respiratory Assessment", styles)
-    interp = report.get("clinical_interpretation", {})
-    text = interp.get("respiratory_summary", "")
-    if text:
-        elements.append(Paragraph(text, styles["narrative"]))
-    else:
-        risk = report.get("risk_engine", {})
-        elements.append(Paragraph(f"Respiratory risk score: {risk.get('respiratory', 0)}/100.", styles["body"]))
-    return elements
-
-
-def _s10_laboratory(report: dict, styles: dict) -> list:
-    lab = report.get("lab_intelligence", {})
-    elements = _heading("10. Laboratory Assessment", styles)
-
-    if not lab.get("available"):
-        elements.append(Paragraph("Laboratory AI analysis has not been performed.", styles["placeholder"]))
-        return elements
-
-    interp = report.get("clinical_interpretation", {})
-    if interp.get("laboratory_summary"):
-        elements.append(Paragraph(interp["laboratory_summary"], styles["narrative"]))
-        elements.append(Spacer(1, 3*mm))
-
-    pred = _safe(lab.get("prediction"), "-").replace("_", " ").title()
-    prob = lab.get("risk_probability")
-    prob_str = f"{float(prob)*100:.1f}%" if prob is not None else "-"
-
-    pairs = [("Prediction", pred), ("Risk Probability", prob_str)]
-    elements.append(_kv_table(pairs, styles))
-    elements.append(Spacer(1, 3*mm))
-
-    # SHAP features
-    top_features = lab.get("top_features")
-    if top_features and isinstance(top_features, dict):
-        elements.append(Paragraph("<b>Key Contributing Factors (SHAP)</b>", styles["body_bold"]))
-        elements.append(Spacer(1, 2*mm))
-        shap_data = [["Feature", "Impact"]]
-        sorted_feats = sorted(top_features.items(), key=lambda x: abs(float(x[1])), reverse=True)[:5]
-        for feat, val in sorted_feats:
-            v = float(val)
-            sign = "+" if v > 0 else ""
-            shap_data.append([feat.replace("_", " ").title(), f"{sign}{v:.4f}"])
-
-        t = Table(shap_data, colWidths=[70*mm, 40*mm])
-        t.setStyle(_std_table_style())
-        t.setStyle(TableStyle([("FONTNAME", (1, 1), (1, -1), "Courier-Bold"), ("FONTSIZE", (0, 0), (-1, -1), 8.5)]))
-        elements.append(t)
-
-    return elements
-
-
-def _s11_imaging(report: dict, styles: dict) -> list:
-    img = report.get("imaging_intelligence", {})
-    elements = _heading("11. Imaging Assessment", styles)
-
-    if not img.get("available"):
-        elements.append(Paragraph("Imaging analysis has not been performed.", styles["placeholder"]))
-        return elements
-
-    interp = report.get("clinical_interpretation", {})
-    if interp.get("imaging_summary"):
-        elements.append(Paragraph(interp["imaging_summary"], styles["narrative"]))
-        elements.append(Spacer(1, 3*mm))
-
-    pred = _safe(img.get("prediction"), "-").replace("_", " ").title()
-    prob = img.get("pneumonia_probability")
-    prob_str = f"{float(prob)*100:.1f}%" if prob is not None else "-"
-    conf = img.get("confidence")
-    conf_str = f"{float(conf)*100:.1f}%" if conf is not None else "-"
-
-    pairs = [("Finding", pred), ("Pneumonia Probability", prob_str), ("Model Confidence", conf_str)]
-    elements.append(_kv_table(pairs, styles))
-    elements.append(Spacer(1, 2*mm))
-    elements.append(Paragraph("X-ray and Grad-CAM heatmap are available in the web report.", styles["small"]))
-
-    return elements
-
-
-def _s12_monitoring(report: dict, styles: dict) -> list:
-    conc = report.get("clinical_conclusions", {})
-    interp = report.get("clinical_interpretation", {})
-    priorities = conc.get("monitoring_priorities", [])
-    if not priorities:
-        return []
-
-    elements = _heading("12. Monitoring Priorities", styles)
-
-    if interp.get("monitoring_narrative"):
-        elements.append(Paragraph(interp["monitoring_narrative"], styles["narrative"]))
-        elements.append(Spacer(1, 3*mm))
-
-    for m in priorities:
-        elements.append(Paragraph(
-            f"<b>{m.get('parameter', '')}</b> — {m.get('reason', '')}",
-            styles["body"],
-        ))
-        elements.append(Spacer(1, 1.5*mm))
-
-    return elements
-
-
-def _s13_precautions(report: dict, styles: dict) -> list:
-    conc = report.get("clinical_conclusions", {})
-    interp = report.get("clinical_interpretation", {})
-    precautions = conc.get("clinical_precautions", [])
-    if not precautions:
-        return []
-
-    elements = _heading("13. Immediate Clinical Precautions", styles)
-
-    if interp.get("precautions_narrative"):
-        elements.append(Paragraph(interp["precautions_narrative"], styles["narrative"]))
-        elements.append(Spacer(1, 3*mm))
-
-    for p in precautions:
-        elements.append(Paragraph(
-            f"<b>⚠ {p.get('action', '')}</b> — {p.get('reason', '')}",
-            styles["body"],
-        ))
-        elements.append(Spacer(1, 1.5*mm))
-
-    elements.append(Spacer(1, 2*mm))
-    elements.append(Paragraph(
-        "These are monitoring precautions only. They do not constitute treatment recommendations.",
-        ParagraphStyle("PrecautionDisclaimer", parent=styles["small"], textColor=DANGER, fontName="Helvetica-Bold"),
-    ))
-
-    return elements
-
-
-def _s14_next_steps(report: dict, styles: dict) -> list:
-    conc = report.get("clinical_conclusions", {})
-    inv_status = conc.get("investigation_status", [])
-    if not inv_status:
-        # Fall back to raw investigations
-        investigations = report.get("investigations", [])
-        if not investigations:
-            return []
-        elements = _heading("14. Recommended Next Clinical Steps", styles)
-        for inv in investigations:
-            status = inv.get("status", "pending")
-            elements.append(Paragraph(f"  •  {inv.get('investigation_type', '-')} — {status.upper()}", styles["body"]))
-        return elements
-
-    elements = _heading("14. Recommended Next Clinical Steps", styles)
-
-    inv_data = [["Investigation", "Status", "AI Analysis"]]
-    for inv in inv_status:
-        inv_data.append([
-            inv.get("investigation_type", "—"),
-            inv.get("status", "—").upper(),
-            inv.get("ai_status", "—"),
-        ])
-
-    t = Table(inv_data, colWidths=[55*mm, 30*mm, 55*mm])
-    t.setStyle(_std_table_style())
-    elements.append(t)
-
-    return elements
-
-
-def _s15_clinical_data(report: dict, styles: dict) -> list:
-    evidence_items = report.get("evidence", [])
-    if not evidence_items:
-        return []
-
-    elements = _heading("15. Clinical Data Used for Analysis", styles)
-
-    ev_data = [["File", "Type", "Uploaded"]]
-    for ev in evidence_items:
-        uploaded = _safe(ev.get("uploaded_at"), "—")
-        if len(uploaded) > 10:
-            uploaded = uploaded[:10]
-        ev_data.append([
-            _safe(ev.get("file_name")),
-            _safe(ev.get("evidence_type")).upper(),
-            uploaded,
-        ])
-
-    t = Table(ev_data, colWidths=[65*mm, 30*mm, 35*mm])
-    t.setStyle(_std_table_style())
-    elements.append(t)
-
-    return elements
-
-
-def _s16_report_quality(report: dict, styles: dict) -> list:
-    conc = report.get("clinical_conclusions", {})
-    interp = report.get("clinical_interpretation", {})
-    rq = conc.get("report_quality", {})
-    limitations = conc.get("clinical_limitations", [])
-    if not rq and not limitations:
-        return []
-
-    elements = _heading("16. Report Quality & Evidence Completeness", styles)
-
-    if rq:
-        pairs = [
-            ("Evidence Completeness", f"{rq.get('evidence_completeness_pct', 0)}%"),
-            ("Subsystem Agreement", _safe(rq.get("subsystem_agreement"))),
-            ("Pipeline Integrity", _safe(rq.get("pipeline_integrity"))),
-            ("Missing Critical Inputs", ", ".join(rq.get("missing_critical_inputs", [])) or "None"),
-        ]
-        elements.append(_kv_table(pairs, styles))
-        elements.append(Spacer(1, 3*mm))
-
-    if interp.get("limitations_narrative"):
-        elements.append(Paragraph(interp["limitations_narrative"], styles["narrative"]))
-        elements.append(Spacer(1, 3*mm))
-
-    # Limitations grid
-    if limitations:
-        lim_data = [["Data Source", "Status"]]
-        for lim in limitations:
-            status = "Available" if lim.get("available") else "Unavailable"
-            lim_data.append([lim.get("source", "—"), status])
-
-        t = Table(lim_data, colWidths=[70*mm, 40*mm])
-        t.setStyle(_std_table_style())
-        for i in range(1, len(lim_data)):
-            if lim_data[i][1] == "Unavailable":
-                t.setStyle(TableStyle([
-                    ("TEXTCOLOR", (1, i), (1, i), DANGER),
-                    ("FONTNAME", (1, i), (1, i), "Helvetica-Bold"),
-                ]))
-            else:
-                t.setStyle(TableStyle([
-                    ("TEXTCOLOR", (1, i), (1, i), SUCCESS),
-                    ("FONTNAME", (1, i), (1, i), "Helvetica-Bold"),
-                ]))
-        elements.append(t)
-
-    return elements
-
-
-def _s17_system_info(report: dict, styles: dict) -> list:
-    elements = _heading("17. System Information & Disclaimer", styles)
-
-    # Analysis components (no internal model names)
-    elements.append(Paragraph("<b>Analysis Generated Using:</b>", styles["body_bold"]))
-    elements.append(Spacer(1, 2*mm))
-    for tech in [
-        "Clinical NLP",
-        "Rule-based Risk Engine",
-        "Laboratory ML Analysis",
-        "Medical Imaging AI",
-        "Evidence Aggregation Engine",
-        "Grounded Clinical Language Model",
-    ]:
-        elements.append(Paragraph(f"  ✓  {tech}", styles["body"]))
-
-    elements.append(Spacer(1, 4*mm))
-
-    version = report.get("report_version", "1.0")
-    gen_at = report.get("generated_at", "")
-    try:
-        gen_str = datetime.fromisoformat(gen_at).strftime("%d %b %Y · %I:%M %p")
-    except Exception:
-        gen_str = gen_at
-
-    elements.append(Paragraph(f"<b>Report Version:</b> PRATHAM v{version}", styles["small"]))
-    elements.append(Paragraph(f"<b>Generated:</b> {gen_str}", styles["small"]))
-
-    elements.append(Spacer(1, 6*mm))
-
-    # Disclaimer
-    elements.append(HRFlowable(width="100%", thickness=1, color=BORDER, spaceAfter=3*mm))
-    elements.append(Paragraph(
-        "This system supports clinical decision-making and does not replace physician judgment. "
-        "Final diagnosis and treatment remain the responsibility of the attending physician. "
-        "AI-generated interpretations are explanations of structured clinical evidence and should be "
-        "validated against independent clinical assessment.",
-        ParagraphStyle("Disclaimer", parent=styles["footer"], textColor=DANGER, fontName="Helvetica-Bold", fontSize=8, leading=12),
-    ))
-
-    return elements
-
-
-# ── Page template callbacks ──────────────────────────────────────────────────
+# ── Page Template Callback ───────────────────────────────────────────────────
 
 def _header_footer(canvas, doc):
     canvas.saveState()
     canvas.setFont("Helvetica", 7)
-    canvas.setFillColor(MUTED)
-    canvas.drawString(15*mm, A4[1] - 10*mm, "PRATHAM — Clinical Intelligence Report")
-    canvas.drawRightString(A4[0] - 15*mm, A4[1] - 10*mm, datetime.now().strftime("%d %b %Y"))
-    canvas.setFont("Helvetica", 7)
-    canvas.setFillColor(MUTED)
-    canvas.drawCentredString(A4[0] / 2, 10*mm, f"Page {doc.page}  ·  PRATHAM AI — For clinical decision support only")
+    canvas.setFillColor(COLOR_MUTED)
+    canvas.drawString(15*mm, A4[1] - 10*mm, "PRATHAM — Emergency Clinical Decision Support Platform")
+    canvas.drawRightString(A4[0] - 15*mm, A4[1] - 10*mm, f"Document ID: {doc.title or 'Intake-File'}")
+    canvas.drawCentredString(A4[0] / 2, 10*mm, f"Page {doc.page}  ·  CONFIDENTIAL CLINICAL REPORT")
     canvas.restoreState()
 
 
-# ── Main entry point ─────────────────────────────────────────────────────────
+# ── Main Generator ───────────────────────────────────────────────────────────
 
 def generate_pdf(report: Dict[str, Any]) -> bytes:
     """
-    Generate a 17-section clinical PDF from the unified Report DTO.
-    Returns the raw PDF bytes.
+    Generate a professional 12-section clinical PDF from the unified Report DTO.
     """
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf,
         pagesize=A4,
-        topMargin=18*mm,
-        bottomMargin=18*mm,
+        topMargin=15*mm,
+        bottomMargin=15*mm,
         leftMargin=15*mm,
         rightMargin=15*mm,
-        title="PRATHAM Clinical Intelligence Report",
-        author="PRATHAM AI System",
+        title="PRATHAM_Clinical_Report",
+        author="PRATHAM ED Platform",
     )
 
     styles = _build_styles()
     elements: list = []
 
-    try:
-        elements.extend(_build_cover(report, styles))
-    except Exception as e:
-        logger.error("PDF cover generation failed: %s", e)
+    # Retrieve restructured clinical report data
+    clin = report.get("clinician_report")
+    if not clin:
+        # Fallback to extremely basic error PDF to prevent any compilation crash
+        elements.append(Paragraph("Clinical report structure not populated. Please contact support.", styles["doc_title"]))
+        doc.build(elements)
+        return buf.getvalue()
 
-    section_builders = [
-        _s1_patient_summary,
-        _s2_clinical_overview,
-        _s3_vital_signs,
-        _s4_key_clinical_findings,
-        _s5_overall_impression,
-        _s6_alternative_considerations,
-        _s7_ranking_justification,
-        _s8_cardiac,
-        _s9_respiratory,
-        _s10_laboratory,
-        _s11_imaging,
-        _s12_monitoring,
-        _s13_precautions,
-        _s14_next_steps,
-        _s15_clinical_data,
-        _s16_report_quality,
-        _s17_system_info,
+    snap = clin["patient_snapshot"]
+
+    # ── Document Header ──────────────────────────────────────────────────────
+    elements.append(Paragraph("PRATHAM EMERGENCY DIAGNOSTIC CLINICAL REPORT", styles["doc_title"]))
+    elements.append(Paragraph(f"Generated: {snap['generated_time']} | Reviewer: {snap['reviewer']}", styles["doc_subtitle"]))
+    elements.append(HRFlowable(width="100%", thickness=1.5, color=COLOR_DARK, spaceAfter=6*mm))
+
+    # ── Section 1: Patient Snapshot Cover Sheet ──────────────────────────────
+    elements.extend(_section_header("1. Patient Snapshot Cover Sheet", styles))
+    snap_data = [
+        [
+            Paragraph("<b>Case ID:</b>", styles["body_bold"]), Paragraph(snap["case_id"], styles["body"]),
+            Paragraph("<b>Patient Name:</b>", styles["body_bold"]), Paragraph(snap["patient_name"], styles["body"])
+        ],
+        [
+            Paragraph("<b>Age / Gender:</b>", styles["body_bold"]), Paragraph(f"{snap['age']} / {snap['gender']}", styles["body"]),
+            Paragraph("<b>Arrival Mode:</b>", styles["body_bold"]), Paragraph(snap["arrival_type"], styles["body"])
+        ],
+        [
+            Paragraph("<b>Clinical Priority:</b>", styles["body_bold"]), Paragraph(snap["priority"], styles["critical_text"] if snap["priority"].upper() in ("CRITICAL", "HIGH") else styles["body"]),
+            Paragraph("<b>Report Version:</b>", styles["body_bold"]), Paragraph(snap["report_version"], styles["body"])
+        ],
+        [
+            Paragraph("<b>Completed Tests:</b>", styles["body_bold"]), Paragraph(snap["completed_tests"], styles["body"]),
+            Paragraph("<b>Last Updated:</b>", styles["body_bold"]), Paragraph(snap["updated_time"], styles["body"])
+        ]
     ]
+    t_snap = Table(snap_data, colWidths=[35*mm, 50*mm, 35*mm, 60*mm])
+    t_snap.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("GRID", (0, 0), (-1, -1), 0.5, COLOR_LINE),
+        ("BACKGROUND", (0, 0), (-1, -1), COLOR_BG_LIGHT),
+        ("TOPPADDING", (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(t_snap)
+    elements.append(Spacer(1, 4*mm))
 
-    for builder in section_builders:
-        try:
-            result = builder(report, styles)
-            if result:
-                elements.extend(result)
-        except Exception as e:
-            logger.error("PDF section %s failed: %s", builder.__name__, e)
-            elements.append(Paragraph(f"Error generating section: {e}", styles["placeholder"]))
+    # ── Section 2: Clinical Timeline (Task 2: Timeline) ─────────────────────
+    elements.extend(_section_header("2. Clinical Timeline", styles))
+    timeline_data = [
+        [
+            Paragraph(f"<b>{evt['time']}</b>", styles["body_bold"]),
+            Paragraph(f"<b>{evt['event']}</b> — {evt['actor']}<br/><font color='#64748B'>{evt['reason']}</font>", styles["body"])
+        ]
+        for evt in clin["timeline"]
+    ]
+    t_time = Table(timeline_data, colWidths=[25*mm, 155*mm])
+    t_time.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("LINEBELOW", (0, 0), (-1, -2), 0.5, COLOR_LINE),
+    ]))
+    elements.append(t_time)
+    elements.append(Spacer(1, 4*mm))
+
+    # ── Section 3: Presenting Complaint (Task 3) ─────────────────────────────
+    elements.extend(_section_header("3. Presenting Complaint", styles))
+    pc = clin["presenting_complaint"]
+    elements.append(Paragraph(f"<b>Chief Complaint:</b> {pc['chief_complaint']}", styles["body_bold"]))
+    elements.append(Spacer(1, 2*mm))
+    elements.append(Paragraph(f"<b>Emergency Intake Narrative:</b><br/>{pc['emergency_description']}", styles["body"]))
+    elements.append(Spacer(1, 4*mm))
+
+    # ── Section 4: History of Present Illness (Task 4) ──────────────────────
+    elements.extend(_section_header("4. History of Present Illness (HPI)", styles))
+    elements.append(Paragraph(clin["hpi"], styles["body"]))
+    elements.append(Spacer(1, 4*mm))
+
+    # ── Section 5: Vital Signs ───────────────────────────────────────────────
+    elements.extend(_section_header("5. Vital Signs", styles))
+    
+    # Restructure vitals matching VITAL_RANGES standard
+    vits = clin["vitals_list"]
+    vital_rows = [
+        ["Vital Sign", "Value Recorded", "Reference Range", "Assessment"],
+        ["Heart Rate", f"{_safe(vits.get('heart_rate'))} bpm", "60–100 bpm", "Normal" if vits.get("heart_rate") and 60 <= vits["heart_rate"] <= 100 else "Abnormal"],
+        ["Oxygen Saturation (SpO₂)", f"{_safe(vits.get('spo2'))}%", "95–100%", "Normal" if vits.get("spo2") and 95 <= vits["spo2"] <= 100 else "Abnormal"],
+        ["Systolic BP", f"{_safe(vits.get('bp_systolic'))} mmHg", "90–140 mmHg", "Normal" if vits.get("bp_systolic") and 90 <= vits["bp_systolic"] <= 140 else "Abnormal"],
+        ["Diastolic BP", f"{_safe(vits.get('bp_diastolic'))} mmHg", "60–90 mmHg", "Normal" if vits.get("bp_diastolic") and 60 <= vits["bp_diastolic"] <= 90 else "Abnormal"],
+        ["Temperature", f"{_safe(vits.get('temperature'))}°C", "36.1–37.8°C", "Normal" if vits.get("temperature") and 36.1 <= vits["temperature"] <= 37.8 else "Abnormal"],
+        ["Respiratory Rate", f"{_safe(vits.get('respiratory_rate'))} breath/min", "12–20 breath/min", "Normal" if vits.get("respiratory_rate") and 12 <= vits["respiratory_rate"] <= 20 else "Abnormal"]
+    ]
+    t_vits_data = []
+    for i, r in enumerate(vital_rows):
+        if i == 0:
+            t_vits_data.append([Paragraph(f"<b>{col}</b>", styles["body_bold"]) for col in r])
+        else:
+            is_abn = r[3] == "Abnormal"
+            style_col = styles["critical_text"] if is_abn else styles["body"]
+            t_vits_data.append([
+                Paragraph(r[0], styles["body"]),
+                Paragraph(r[1], style_col),
+                Paragraph(r[2], styles["body"]),
+                Paragraph(r[3], style_col)
+            ])
+            
+    t_vits = Table(t_vits_data, colWidths=[55*mm, 40*mm, 45*mm, 40*mm])
+    t_vits.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("GRID", (0, 0), (-1, -1), 0.5, COLOR_LINE),
+        ("BACKGROUND", (0, 0), (-1, 0), COLOR_BG_LIGHT),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(t_vits)
+    elements.append(Spacer(1, 4*mm))
+
+    # ── Section 6: Investigations Reviewed (Task A1 Matrix) ──────────────────
+    elements.extend(_section_header("6. Investigations Reviewed", styles))
+    matrix_data = [
+        [
+            Paragraph(f"<b>{t['test_name']}</b>", styles["body_bold"]),
+            Paragraph(
+                f"<font color='#0F766E'><b>{t['status']}</b></font>" if t["status"] == "Completed"
+                else f"<font color='#B45309'><b>{t['status']}</b></font>" if t["status"] == "Pending"
+                else f"<font color='#64748B'>{t['status']}</font>",
+                styles["body"]
+            )
+        ]
+        for t in clin["investigations_matrix"]
+    ]
+    t_matrix = Table(matrix_data, colWidths=[90*mm, 90*mm])
+    t_matrix.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("GRID", (0, 0), (-1, -1), 0.5, COLOR_LINE),
+        ("BACKGROUND", (0, 0), (-1, -1), COLOR_BG_LIGHT),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(t_matrix)
+    elements.append(Spacer(1, 4*mm))
+
+    # ── Section 7: Clinical Findings (Task B3 Specialty findings) ────────────
+    elements.extend(_section_header("7. Clinical Findings", styles))
+    cf = clin["clinical_findings"]
+    has_any = False
+    
+    if cf.get("cardiac"):
+        elements.append(Paragraph("<b>Cardiac findings:</b>", styles["body_bold"]))
+        elements.append(Paragraph(cf["cardiac"], styles["body"]))
+        elements.append(Spacer(1, 2.5*mm))
+        has_any = True
+        
+    if cf.get("respiratory"):
+        elements.append(Paragraph("<b>Respiratory findings:</b>", styles["body_bold"]))
+        elements.append(Paragraph(cf["respiratory"], styles["body"]))
+        elements.append(Spacer(1, 2.5*mm))
+        has_any = True
+
+    if not has_any:
+        elements.append(Paragraph(cf.get("general") or "No active clinical findings detected.", styles["body"]))
+    elements.append(Spacer(1, 4*mm))
+
+    # ── Section 8: Differential Diagnosis (Task B4 Table) ────────────────────
+    elements.extend(_section_header("8. Differential Diagnosis", styles))
+    
+    for diff in clin["differential_diagnosis"]:
+        elements.append(Paragraph(f"<b>Condition: {diff['condition']}</b>", styles["body_bold"]))
+        elements.append(Spacer(1, 1.5*mm))
+        
+        # Supporting / Contradicting
+        supp_text = ", ".join(diff["supporting"]) or "None identified"
+        cont_text = ", ".join(diff["contradicting"]) or "None identified"
+        
+        diff_kv = [
+            [Paragraph("<b>Supporting Findings:</b>", styles["label"]), Paragraph(supp_text, styles["body"])],
+            [Paragraph("<b>Contradicting Findings:</b>", styles["label"]), Paragraph(cont_text, styles["body"])],
+            [Paragraph("<b>Further Evidence Needed:</b>", styles["label"]), Paragraph(diff["further_evidence"], styles["body_italic"])]
+        ]
+        t_diff = Table(diff_kv, colWidths=[45*mm, 135*mm])
+        t_diff.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("LEFTPADDING", (0, 0), (0, -1), 0),
+        ]))
+        elements.append(t_diff)
+        elements.append(Spacer(1, 3*mm))
+
+    # ── Section 9: Clinical Impression (Task B5) ─────────────────────────────
+    elements.extend(_section_header("9. Clinical Impression", styles))
+    ci = clin["clinical_impression"]
+    elements.append(Paragraph(f"<b>Primary Impression:</b> {ci['primary']}", styles["body_bold"]))
+    if ci.get("secondary"):
+        elements.append(Spacer(1, 1.5*mm))
+        elements.append(Paragraph(f"<b>Secondary Considerations:</b> {ci['secondary']}", styles["body"]))
+    elements.append(Spacer(1, 2.5*mm))
+    elements.append(Paragraph(f"<b>Clinical Assessment:</b><br/>{ci['assessment']}", styles["body"]))
+    elements.append(Spacer(1, 4*mm))
+
+    # ── Section 10: Recommended Next Steps (Task B6) ─────────────────────────
+    elements.extend(_section_header("10. Recommended Next Steps", styles))
+    recs = clin["recommendations"]
+    
+    elements.append(Paragraph("<b>Immediate Actions:</b>", styles["body_bold"]))
+    for r in recs["immediate"]:
+        elements.append(Paragraph(f"  •  {r}", styles["body"]))
+    elements.append(Spacer(1, 2.5*mm))
+        
+    elements.append(Paragraph("<b>Short-Term Follow-up:</b>", styles["body_bold"]))
+    for r in recs["short_term"]:
+        elements.append(Paragraph(f"  •  {r}", styles["body"]))
+    elements.append(Spacer(1, 2.5*mm))
+        
+    elements.append(Paragraph("<b>Additional Investigations Required:</b>", styles["body_bold"]))
+    for r in recs["additional"]:
+        elements.append(Paragraph(f"  •  {r}", styles["body"]))
+    elements.append(Spacer(1, 4*mm))
+
+    # ── Section 11: Evidence Quality & Summary (Task 7 & 9) ──────────────────
+    elements.extend(_section_header("11. Evidence Quality & Summary", styles))
+    eq = clin["evidence_quality"]
+    elements.append(Paragraph(f"<b>Overall Reliability:</b> {eq['reliability']}", styles["body_bold"]))
+    elements.append(Paragraph(f"<b>Reasoning:</b> {eq['reason']}", styles["body"]))
+    elements.append(Spacer(1, 3*mm))
+
+    elements.append(Paragraph("<b>Version History:</b>", styles["body_bold"]))
+    elements.append(Spacer(1, 1.5*mm))
+    v_rows = [
+        [Paragraph(f"<b>{v['version']}</b>", styles["body_bold"]), Paragraph(v["time"], styles["body"]), Paragraph(v["event"], styles["body"])]
+        for v in eq["history"]
+    ]
+    t_v = Table(v_rows, colWidths=[20*mm, 25*mm, 135*mm])
+    t_v.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("GRID", (0, 0), (-1, -1), 0.5, COLOR_LINE),
+        ("BACKGROUND", (0, 0), (-1, -1), COLOR_BG_LIGHT),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    elements.append(t_v)
+    
+    # ── Section 12: Technical Appendix (Task B8 Developer details) ──────────
+    elements.append(PageBreak())
+    elements.extend(_section_header("12. Technical Appendix", styles))
+    elements.append(Paragraph("This appendix contains system engineering diagnostics and machine learning metadata, intended solely for platform developers and administrators.", styles["body_italic"]))
+    elements.append(Spacer(1, 4*mm))
+
+    # Aggregation probabilities & SHAP/GradCAM info
+    agg = report.get("aggregation", {})
+    if agg and agg.get("available"):
+        elements.append(Paragraph("<b>Aggregated Model Predictions:</b>", styles["body_bold"]))
+        probs = agg.get("probabilities", {})
+        prob_rows = [
+            [Paragraph(cond, styles["body"]), Paragraph(f"{prob*100:.1f}%" if prob is not None else "—", styles["body"])]
+            for cond, prob in probs.items()
+        ]
+        t_probs = Table(prob_rows, colWidths=[80*mm, 100*mm])
+        t_probs.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("GRID", (0, 0), (-1, -1), 0.5, COLOR_LINE),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(t_probs)
+        elements.append(Spacer(1, 4*mm))
+
+    # Subsystem details
+    elements.append(Paragraph("<b>Pipeline Subsystem Diagnostics:</b>", styles["body_bold"]))
+    diag_rows = []
+    lab = report.get("lab_intelligence", {})
+    if lab and lab.get("available"):
+        diag_rows.append(["Lab Intelligence Subsystem", f"Model: {lab.get('model_name') or 'XGBoost Cardiac'}", f"Prediction: {lab.get('prediction')}", f"Prob: {lab.get('risk_probability', 0)*100:.1f}%"])
+    img = report.get("imaging_intelligence", {})
+    if img and img.get("available"):
+        diag_rows.append(["Imaging Intelligence Subsystem", f"Model: {img.get('model_name') or 'EfficientNet Chest X-ray'}", f"Prediction: {img.get('prediction')}", f"Prob: {img.get('pneumonia_probability', 0)*100:.1f}%"])
+        
+    if diag_rows:
+        t_diags = Table(diag_rows, colWidths=[50*mm, 50*mm, 40*mm, 40*mm])
+        t_diags.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("GRID", (0, 0), (-1, -1), 0.5, COLOR_LINE),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(t_diags)
+        elements.append(Spacer(1, 4*mm))
+
+    # Disclaimer
+    elements.append(HRFlowable(width="100%", thickness=1, color=COLOR_LINE, spaceAfter=3*mm))
+    elements.append(Paragraph(
+        "Disclaimer: This platform is designed for clinical decision support. Final diagnostic and treatment decisions "
+        "are the exclusive responsibility of the attending physician. AI metrics are presented as secondary observations.",
+        styles["footer"]
+    ))
 
     doc.build(elements, onFirstPage=_header_footer, onLaterPages=_header_footer)
     return buf.getvalue()

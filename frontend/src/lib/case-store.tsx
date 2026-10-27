@@ -5,7 +5,7 @@ import {
   type PatientCase,
 } from "./mock-data";
 
-const API_BASE = "http://localhost:8000/api";
+import { API_BASE } from "./api-config";
 
 export type Role = "nurse" | "doctor";
 

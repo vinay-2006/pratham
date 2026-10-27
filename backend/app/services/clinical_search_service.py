@@ -7,7 +7,7 @@ Searches patient records by symptoms, chief complaints, diagnostic findings, or 
 from __future__ import annotations
 import logging
 from typing import Any, Dict, List
-from app.db.supabase_client import supabase
+from app.domains.triage.repository import intake_repository
 
 logger = logging.getLogger(__name__)
 
@@ -23,14 +23,11 @@ def search_clinical_records(query: str) -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
 
     try:
-        res = (
-            supabase.table("emergency_intake")
-            .select("id, chief_complaint, emergency_description, severity_level, created_at, patients(first_name, last_name)")
-            .or_(f"chief_complaint.ilike.%{q}%,emergency_description.ilike.%{q}%")
-            .limit(20)
-            .execute()
+        data = intake_repository.search(
+            filter_expr=f"chief_complaint.ilike.%{q}%,emergency_description.ilike.%{q}%",
+            columns="id, chief_complaint, emergency_description, severity_level, created_at, patients(first_name, last_name)",
+            limit=20,
         )
-        data = res.data or []
 
         for item in data:
             p_name = "Unknown"

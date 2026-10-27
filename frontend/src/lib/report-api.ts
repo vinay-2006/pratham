@@ -11,8 +11,7 @@
  */
 
 import axios from "axios";
-
-const API_BASE = "http://localhost:8000/api";
+import { API_BASE } from "./api-config";
 
 // ── Type definitions ─────────────────────────────────────────────────────
 
@@ -252,6 +251,14 @@ export async function fetchClinicalReport(intakeId: string): Promise<ClinicalRep
 export async function fetchPipelineStatus(intakeId: string): Promise<PipelineStatusResponse> {
   const { data } = await axios.get<PipelineStatusResponse>(
     `${API_BASE}/pipeline/status/${intakeId}`
+  );
+  return data;
+}
+
+export async function markReportReviewed(intakeId: string, doctorName?: string): Promise<{ status: string; transitioned: boolean }> {
+  const { data } = await axios.post<{ status: string; transitioned: boolean }>(
+    `${API_BASE}/report/${intakeId}/mark-reviewed`,
+    { doctor_name: doctorName || "Doctor on Duty" }
   );
   return data;
 }

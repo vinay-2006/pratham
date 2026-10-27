@@ -59,12 +59,13 @@ function ReportPage() {
     refetchInterval: (query) => {
       const data = query.state.data;
       const status = data?.patient_summary?.status;
-      if (status === "case_closed" || status === "offline_care") {
+      // Stop polling once the case is terminal or actively being reviewed
+      if (status === "case_closed" || status === "offline_care" || status === "under_doctor_review") {
         return false;
       }
-      return 5_000;
+      return 30_000;
     },
-    staleTime: 2_500,
+    staleTime: 15_000,
   });
 
   // ── Explicit status transition on mount ──────────────────────────────────

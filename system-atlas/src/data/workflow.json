@@ -1,0 +1,7 @@
+{
+  "states": [
+    "Intake Pending",
+    "NLP Running",
+    "Risk Calculated"
+  ]
+}

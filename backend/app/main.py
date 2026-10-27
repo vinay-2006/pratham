@@ -157,6 +157,7 @@ app.add_middleware(
 )
 
 # ── Routers ─────────────────────────────────────────────────────────────────
+app.include_router(investigations.router, prefix="/api", tags=["Investigations"])
 app.include_router(intake.router, tags=["Intake"])
 app.include_router(nlp.router, prefix="/nlp", tags=["NLP"])
 app.include_router(risk.router, prefix="/risk", tags=["Risk"])
@@ -164,7 +165,6 @@ app.include_router(investigation.router, prefix="/investigation", tags=["Investi
 app.include_router(imaging.router, prefix="/evidence", tags=["Evidence"])
 app.include_router(labs.router, prefix="/evidence", tags=["Evidence"])
 app.include_router(aggregation.router, prefix="/api", tags=["Aggregation"])
-app.include_router(investigations.router, prefix="/api", tags=["Investigations"])
 app.include_router(evidence.router, prefix="/api", tags=["Evidence Upload"])
 app.include_router(lab_analysis.router, prefix="/api", tags=["Lab Analysis"])
 app.include_router(imaging_analysis.router, prefix="/api", tags=["Imaging Analysis"])
@@ -191,9 +191,10 @@ async def health_check() -> dict[str, str]:
 async def readiness_probe() -> dict[str, str]:
     """Verify Supabase database connection and Groq environment status."""
     try:
-        from app.db.supabase_client import supabase
+        from app.domains.triage.repository import patients_repository
         # Test database connection
-        supabase.table("patients").select("id").limit(1).execute()
+        if not patients_repository.health_check():
+            raise Exception("Database health check failed")
         # Test Groq key
         groq_key = os.getenv("GROQ_API_KEY")
         if not groq_key or len(groq_key) < 10:
@@ -207,10 +208,8 @@ async def readiness_probe() -> dict[str, str]:
 async def metrics_endpoint() -> dict[str, Any]:
     """Observability telemetry exposing average pipeline stage latencies."""
     try:
-        from app.db.supabase_client import supabase
-        res = supabase.table("pipeline_status").select("stage, duration_ms, status").execute()
-        
-        stages_data = res.data or []
+        from app.domains.pipeline.repository import pipeline_repository
+        stages_data = pipeline_repository.get_all("stage, duration_ms, status")
         stage_metrics = {}
         stage_counts = {}
         
