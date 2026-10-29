@@ -31,6 +31,7 @@ import { PatientTimeline } from "@/components/patient-timeline";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { fetchWorkflowLogs, closeCase } from "@/lib/patient-queue-api";
+import { apiErrorMessage } from "@/lib/api-error";
 import { fetchClinicalReport, markReportReviewed } from "@/lib/report-api";
 import { WorkflowStatus } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
@@ -58,13 +59,14 @@ function ReportPage() {
     queryFn: () => fetchClinicalReport(intakeId),
     refetchInterval: (query) => {
       const data = query.state.data;
-      const status = data?.patient_summary?.status;
-      if (status === "case_closed" || status === "offline_care") {
+      const status = data?.status;
+      // Stop polling once the case is terminal or actively being reviewed
+      if (status === "case_closed" || status === "offline_care" || status === "under_doctor_review") {
         return false;
       }
-      return 5_000;
+      return 30_000;
     },
-    staleTime: 2_500,
+    staleTime: 15_000,
   });
 
   // ── Explicit status transition on mount ──────────────────────────────────
@@ -87,13 +89,13 @@ function ReportPage() {
 
   useEffect(() => {
     if (report && initialEvidenceCount === null) {
-      setInitialEvidenceCount(report.evidence_list?.length || 0);
+      setInitialEvidenceCount(report.evidence?.length || 0);
     }
   }, [report, initialEvidenceCount]);
 
   useEffect(() => {
     if (report && initialEvidenceCount !== null) {
-      const currentCount = report.evidence_list?.length || 0;
+      const currentCount = report.evidence?.length || 0;
       if (currentCount > initialEvidenceCount) {
         setShowRefreshWarning(true);
       }
@@ -102,7 +104,7 @@ function ReportPage() {
 
   const handleRefreshReview = () => {
     if (report) {
-      setInitialEvidenceCount(report.evidence_list?.length || 0);
+      setInitialEvidenceCount(report.evidence?.length || 0);
       setShowRefreshWarning(false);
       refetch();
     }
@@ -172,7 +174,7 @@ function ReportPage() {
           <AlertCircle className="h-5 w-5 shrink-0" />
           <div>
             <p className="font-semibold">Failed to load clinical report</p>
-            <p className="mt-1 text-xs text-muted-foreground">{error?.message}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{apiErrorMessage(error)}</p>
           </div>
         </div>
       </div>
@@ -180,17 +182,17 @@ function ReportPage() {
   }
 
   const patient = report.patient_summary || {};
-  const status = report.status || "clinical_report_ready";
+  const status = (report.status || "clinical_report_ready") as WorkflowStatus;
   const isClosed = status === WorkflowStatus.CLOSED || status === WorkflowStatus.OFFLINE;
 
   // Derive version number and count of completed analysis stages (Cover sheet)
-  const reportVersion = report.evidence_list?.length || 1;
+  const reportVersion = report.evidence?.length || 1;
   const completedStagesCount = Object.values(report.pipeline_status || {}).filter(
     (s) => s === "completed"
   ).length;
 
   // Safety warning calculation for case closure (Additions 5: Pending Check)
-  const hasPendingInvs = report.clinician_report?.investigations_matrix?.some((t: any) => t.status === "Pending") ?? false;
+  const hasPendingInvs = report.clinician_report?.investigations_matrix?.some((t) => t.status === "Pending") ?? false;
 
   return (
     <div className="mx-auto max-w-7xl px-5 py-8 md:px-8 space-y-6">
@@ -282,7 +284,7 @@ function ReportPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-slate-50/50 dark:bg-slate-900/50 p-3 rounded-xl border">
                   <span className="text-[10px] text-slate-400 block font-bold uppercase mb-0.5">Case ID</span>
-                  <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{patient.case_id || report.case_id || "Case"}</span>
+                  <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{report.case_id || "Case"}</span>
                 </div>
                 <div className="bg-slate-50/50 dark:bg-slate-900/50 p-3 rounded-xl border">
                   <span className="text-[10px] text-slate-400 block font-bold uppercase mb-0.5">Report Version</span>
@@ -310,10 +312,10 @@ function ReportPage() {
 
           {/* Journey card tracker */}
           <PatientJourneyCard
-            caseId={patient.case_id || report.case_id || "Case"}
+            caseId={report.case_id || "Case"}
             status={status}
             arrivalType={report.arrival_type || "walk_in"}
-            createdAt={report.created_at}
+            createdAt={report.created_at ?? ""}
           />
 
           {/* Timeline and case log histories */}

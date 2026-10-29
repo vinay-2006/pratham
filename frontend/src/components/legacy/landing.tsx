@@ -11,12 +11,12 @@ import {
 } from "lucide-react";
 
 // Import custom showcase components
-import { DemoLibrary } from "./demo-library";
-import { GuidedTour } from "./guided-tour";
-import { RecruiterMode } from "./recruiter-mode";
-import { ArchitectureExplorer } from "./architecture-explorer";
-import { APIPlayground } from "./api-playground";
-import { PlatformDashboard } from "./platform-dashboard";
+import { DemoLibrary } from "../demo-library";
+import { GuidedTour } from "../guided-tour";
+import { RecruiterMode } from "../recruiter-mode";
+import { ArchitectureExplorer } from "../architecture-explorer";
+import { APIPlayground } from "../api-playground";
+import { PlatformDashboard } from "../platform-dashboard";
 
 export default function Landing() {
   const [tourOpen, setTourOpen] = useState(false);

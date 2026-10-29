@@ -6,7 +6,7 @@ Uses SUPABASE_SERVICE_ROLE_KEY for backend operations (bypasses RLS).
 import os
 
 from dotenv import load_dotenv
-from supabase import Client, create_client
+from supabase import Client, ClientOptions, create_client
 
 load_dotenv()
 
@@ -19,7 +19,8 @@ if not _supabase_url or not _supabase_key:
         "Copy .env.example to .env and fill in your Supabase credentials."
     )
 
-supabase: Client = create_client(_supabase_url, _supabase_key)
+_options = ClientOptions(postgrest_client_timeout=20, storage_client_timeout=30)
+supabase: Client = create_client(_supabase_url, _supabase_key, options=_options)
 
 # Explicitly set the Authorization header so supabase-py 2.5.x correctly
 # sends the service_role JWT on every PostgREST request (bypasses RLS).

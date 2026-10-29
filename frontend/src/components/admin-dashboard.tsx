@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { Activity, Server, Cpu, CheckCircle2, AlertTriangle, Clock, ShieldCheck, Zap } from "lucide-react";
 
-const API_BASE = "http://localhost:8000/api";
+import { API_BASE } from "@/lib/api-config";
 
 interface MetricsData {
   today_reports_generated: number;

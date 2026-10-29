@@ -129,10 +129,17 @@ def get_investigation_history(status: Optional[str] = None) -> List[Dict[str, An
     query_status: Optional[str] = status if status in _VALID_STATUSES else None
     db_status: Optional[str] = _QUERY_STATUS_MAP.get(query_status) if query_status else None
 
-    result_data = intake_repository.list_with_status_filter(
-        columns=_INTAKE_COLUMNS,
-        status=db_status,
-    )
+    try:
+        result_data = intake_repository.list_with_status_filter(
+            columns=_INTAKE_COLUMNS,
+            status=db_status,
+        )
+    except Exception:
+        logger.warning("[History] Retrying investigation history fetch after transient error")
+        result_data = intake_repository.list_with_status_filter(
+            columns=_INTAKE_COLUMNS,
+            status=db_status,
+        )
 
     intakes_resolved = resolve_intakes_status(result_data)
 

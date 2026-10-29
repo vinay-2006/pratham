@@ -34,6 +34,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { API_BASE } from "@/lib/api-config";
+import { apiErrorMessage } from "@/lib/api-error";
 
 interface PatientDetail {
   intake_id: string;
@@ -124,7 +125,7 @@ export function PatientWorkspace({ intakeId }: Props) {
       console.error("[PRATHAM] Add investigation failed:", error);
       toast.error("Failed to add", {
         description: axios.isAxiosError(error)
-          ? error.response?.data?.detail ?? error.message
+          ? apiErrorMessage(error)
           : "Unexpected error — please retry."
       });
     } finally {
@@ -184,7 +185,7 @@ export function PatientWorkspace({ intakeId }: Props) {
         </div>
         <p className="text-xs text-rose-600 dark:text-rose-400/80">
           {axios.isAxiosError(error)
-            ? error.response?.data?.detail ?? error.message
+            ? apiErrorMessage(error)
             : "An unexpected error occurred while querying the server."}
         </p>
         <Button

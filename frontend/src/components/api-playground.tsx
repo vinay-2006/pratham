@@ -6,6 +6,7 @@
 import { useState } from "react";
 import axios from "axios";
 import { Terminal, Send, Eye, Code, Activity, ShieldCheck } from "lucide-react";
+import { API_HOST } from "@/lib/api-config";
 
 interface Endpoint {
   name: string;
@@ -71,7 +72,7 @@ export function APIPlayground() {
     const start = performance.now();
     try {
       let res;
-      const url = `http://localhost:8000${selectedEndpoint.path}`;
+      const url = `${API_HOST}${selectedEndpoint.path}`;
       if (selectedEndpoint.method === "POST") {
         res = await axios.post(url, JSON.parse(payloadStr));
       } else {

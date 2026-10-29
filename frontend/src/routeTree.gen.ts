@@ -27,10 +27,12 @@ import { Route as AppComparisonRouteImport } from './routes/_app.comparison'
 import { Route as AppCommandCenterRouteImport } from './routes/_app.command-center'
 import { Route as AppArchitectureRouteImport } from './routes/_app.architecture'
 import { Route as AppAdminRouteImport } from './routes/_app.admin'
+import { Route as AppNurseRegistryRouteImport } from './routes/_app.nurse.registry'
 import { Route as AppNurseQueueRouteImport } from './routes/_app.nurse.queue'
 import { Route as AppNurseIntakeRouteImport } from './routes/_app.nurse.intake'
 import { Route as AppNurseDashboardRouteImport } from './routes/_app.nurse.dashboard'
 import { Route as AppDoctorReviewRouteImport } from './routes/_app.doctor.review'
+import { Route as AppDoctorReportsRouteImport } from './routes/_app.doctor.reports'
 import { Route as AppDoctorDashboardRouteImport } from './routes/_app.doctor.dashboard'
 import { Route as AppDoctorApprovalsRouteImport } from './routes/_app.doctor.approvals'
 import { Route as AppDoctorReportLatestRouteImport } from './routes/_app.doctor.report.latest'
@@ -125,6 +127,11 @@ const AppAdminRoute = AppAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => AppRoute,
 } as any)
+const AppNurseRegistryRoute = AppNurseRegistryRouteImport.update({
+  id: '/nurse/registry',
+  path: '/nurse/registry',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppNurseQueueRoute = AppNurseQueueRouteImport.update({
   id: '/nurse/queue',
   path: '/nurse/queue',
@@ -143,6 +150,11 @@ const AppNurseDashboardRoute = AppNurseDashboardRouteImport.update({
 const AppDoctorReviewRoute = AppDoctorReviewRouteImport.update({
   id: '/doctor/review',
   path: '/doctor/review',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppDoctorReportsRoute = AppDoctorReportsRouteImport.update({
+  id: '/doctor/reports',
+  path: '/doctor/reports',
   getParentRoute: () => AppRoute,
 } as any)
 const AppDoctorDashboardRoute = AppDoctorDashboardRouteImport.update({
@@ -186,10 +198,12 @@ export interface FileRoutesByFullPath {
   '/search': typeof AppSearchRoute
   '/doctor/approvals': typeof AppDoctorApprovalsRoute
   '/doctor/dashboard': typeof AppDoctorDashboardRoute
+  '/doctor/reports': typeof AppDoctorReportsRoute
   '/doctor/review': typeof AppDoctorReviewRoute
   '/nurse/dashboard': typeof AppNurseDashboardRoute
   '/nurse/intake': typeof AppNurseIntakeRoute
   '/nurse/queue': typeof AppNurseQueueRoute
+  '/nurse/registry': typeof AppNurseRegistryRoute
   '/doctor/report/$intakeId': typeof AppDoctorReportIntakeIdRoute
   '/doctor/report/latest': typeof AppDoctorReportLatestRoute
 }
@@ -213,10 +227,12 @@ export interface FileRoutesByTo {
   '/search': typeof AppSearchRoute
   '/doctor/approvals': typeof AppDoctorApprovalsRoute
   '/doctor/dashboard': typeof AppDoctorDashboardRoute
+  '/doctor/reports': typeof AppDoctorReportsRoute
   '/doctor/review': typeof AppDoctorReviewRoute
   '/nurse/dashboard': typeof AppNurseDashboardRoute
   '/nurse/intake': typeof AppNurseIntakeRoute
   '/nurse/queue': typeof AppNurseQueueRoute
+  '/nurse/registry': typeof AppNurseRegistryRoute
   '/doctor/report/$intakeId': typeof AppDoctorReportIntakeIdRoute
   '/doctor/report/latest': typeof AppDoctorReportLatestRoute
 }
@@ -242,10 +258,12 @@ export interface FileRoutesById {
   '/_app/search': typeof AppSearchRoute
   '/_app/doctor/approvals': typeof AppDoctorApprovalsRoute
   '/_app/doctor/dashboard': typeof AppDoctorDashboardRoute
+  '/_app/doctor/reports': typeof AppDoctorReportsRoute
   '/_app/doctor/review': typeof AppDoctorReviewRoute
   '/_app/nurse/dashboard': typeof AppNurseDashboardRoute
   '/_app/nurse/intake': typeof AppNurseIntakeRoute
   '/_app/nurse/queue': typeof AppNurseQueueRoute
+  '/_app/nurse/registry': typeof AppNurseRegistryRoute
   '/_app/doctor/report/$intakeId': typeof AppDoctorReportIntakeIdRoute
   '/_app/doctor/report/latest': typeof AppDoctorReportLatestRoute
 }
@@ -271,10 +289,12 @@ export interface FileRouteTypes {
     | '/search'
     | '/doctor/approvals'
     | '/doctor/dashboard'
+    | '/doctor/reports'
     | '/doctor/review'
     | '/nurse/dashboard'
     | '/nurse/intake'
     | '/nurse/queue'
+    | '/nurse/registry'
     | '/doctor/report/$intakeId'
     | '/doctor/report/latest'
   fileRoutesByTo: FileRoutesByTo
@@ -298,10 +318,12 @@ export interface FileRouteTypes {
     | '/search'
     | '/doctor/approvals'
     | '/doctor/dashboard'
+    | '/doctor/reports'
     | '/doctor/review'
     | '/nurse/dashboard'
     | '/nurse/intake'
     | '/nurse/queue'
+    | '/nurse/registry'
     | '/doctor/report/$intakeId'
     | '/doctor/report/latest'
   id:
@@ -326,10 +348,12 @@ export interface FileRouteTypes {
     | '/_app/search'
     | '/_app/doctor/approvals'
     | '/_app/doctor/dashboard'
+    | '/_app/doctor/reports'
     | '/_app/doctor/review'
     | '/_app/nurse/dashboard'
     | '/_app/nurse/intake'
     | '/_app/nurse/queue'
+    | '/_app/nurse/registry'
     | '/_app/doctor/report/$intakeId'
     | '/_app/doctor/report/latest'
   fileRoutesById: FileRoutesById
@@ -467,6 +491,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppAdminRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/nurse/registry': {
+      id: '/_app/nurse/registry'
+      path: '/nurse/registry'
+      fullPath: '/nurse/registry'
+      preLoaderRoute: typeof AppNurseRegistryRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/nurse/queue': {
       id: '/_app/nurse/queue'
       path: '/nurse/queue'
@@ -493,6 +524,13 @@ declare module '@tanstack/react-router' {
       path: '/doctor/review'
       fullPath: '/doctor/review'
       preLoaderRoute: typeof AppDoctorReviewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/doctor/reports': {
+      id: '/_app/doctor/reports'
+      path: '/doctor/reports'
+      fullPath: '/doctor/reports'
+      preLoaderRoute: typeof AppDoctorReportsRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/doctor/dashboard': {
@@ -545,10 +583,12 @@ interface AppRouteChildren {
   AppSearchRoute: typeof AppSearchRoute
   AppDoctorApprovalsRoute: typeof AppDoctorApprovalsRoute
   AppDoctorDashboardRoute: typeof AppDoctorDashboardRoute
+  AppDoctorReportsRoute: typeof AppDoctorReportsRoute
   AppDoctorReviewRoute: typeof AppDoctorReviewRoute
   AppNurseDashboardRoute: typeof AppNurseDashboardRoute
   AppNurseIntakeRoute: typeof AppNurseIntakeRoute
   AppNurseQueueRoute: typeof AppNurseQueueRoute
+  AppNurseRegistryRoute: typeof AppNurseRegistryRoute
   AppDoctorReportIntakeIdRoute: typeof AppDoctorReportIntakeIdRoute
   AppDoctorReportLatestRoute: typeof AppDoctorReportLatestRoute
 }
@@ -572,10 +612,12 @@ const AppRouteChildren: AppRouteChildren = {
   AppSearchRoute: AppSearchRoute,
   AppDoctorApprovalsRoute: AppDoctorApprovalsRoute,
   AppDoctorDashboardRoute: AppDoctorDashboardRoute,
+  AppDoctorReportsRoute: AppDoctorReportsRoute,
   AppDoctorReviewRoute: AppDoctorReviewRoute,
   AppNurseDashboardRoute: AppNurseDashboardRoute,
   AppNurseIntakeRoute: AppNurseIntakeRoute,
   AppNurseQueueRoute: AppNurseQueueRoute,
+  AppNurseRegistryRoute: AppNurseRegistryRoute,
   AppDoctorReportIntakeIdRoute: AppDoctorReportIntakeIdRoute,
   AppDoctorReportLatestRoute: AppDoctorReportLatestRoute,
 }

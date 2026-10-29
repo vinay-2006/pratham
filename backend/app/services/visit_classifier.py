@@ -36,7 +36,7 @@ def classify_visit(symptoms: dict, vitals: dict, severity: str, description: str
         return "emergency"
 
     # 2. Check overall severity
-    if severity.lower() != "low":
+    if (severity or "moderate").lower() != "low":
         return "emergency"
 
     # 3. Check vitals (normal limits)

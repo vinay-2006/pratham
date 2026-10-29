@@ -6,22 +6,33 @@ export type AIConfidence = "Low" | "Moderate" | "High";
 export type Completeness = "LOW" | "MODERATE" | "HIGH";
 export type InvestigationStatus = "Pending" | "In progress" | "Confirmed";
 
-// New: end-to-end workflow status for the investigation pipeline
-export type WorkflowStatus =
-  | "Pending Approval"
-  | "Approved"
-  | "In Progress"
-  | "Results Available"
-  | "Reviewed"
-  | "Rejected";
+export enum WorkflowStatus {
+  INTAKE_SUBMITTED = "intake_submitted",
+  EN_ROUTE = "en_route",
+  ARRIVED = "arrived",
+  AWAITING_APPROVAL = "awaiting_doctor_approval",
+  APPROVED = "investigations_approved",
+  UPLOAD_PENDING = "evidence_upload_pending",
+  ANALYSIS_RUNNING = "analysis_running",
+  REPORT_READY = "clinical_report_ready",
+  UNDER_REVIEW = "under_doctor_review",
+  CLOSED = "case_closed",
+  OFFLINE = "offline_care",
+}
 
-// Patient-level lifecycle status visible to nurses
-export type PatientStatus =
-  | "Intake Pending"
-  | "Awaiting Doctor Approval"
-  | "Investigation Approved"
-  | "Investigation Running"
-  | "Results Available";
+export const WORKFLOW_LABELS: Record<WorkflowStatus, string> = {
+  [WorkflowStatus.INTAKE_SUBMITTED]: "Intake Submitted",
+  [WorkflowStatus.EN_ROUTE]: "En Route",
+  [WorkflowStatus.ARRIVED]: "Arrived",
+  [WorkflowStatus.AWAITING_APPROVAL]: "Awaiting Doctor Approval",
+  [WorkflowStatus.APPROVED]: "Investigations Approved",
+  [WorkflowStatus.UPLOAD_PENDING]: "Evidence Upload Pending",
+  [WorkflowStatus.ANALYSIS_RUNNING]: "Analysis Running",
+  [WorkflowStatus.REPORT_READY]: "Clinical Report Ready",
+  [WorkflowStatus.UNDER_REVIEW]: "Under Doctor Review",
+  [WorkflowStatus.CLOSED]: "Case Closed",
+  [WorkflowStatus.OFFLINE]: "Offline Care",
+};
 
 export interface RiskEstimate {
   label: string;
@@ -298,6 +309,13 @@ export const initialNotifications: DoctorNotification[] = [
 ];
 
 // ===== Patient queue (for nurse dashboard) =====
+export type PatientStatus =
+  | "Intake Pending"
+  | "Awaiting Doctor Approval"
+  | "Investigation Approved"
+  | "Investigation Running"
+  | "Results Available";
+
 export interface QueuePatient {
   id: string;
   name: string;
@@ -371,7 +389,7 @@ export const patientQueue: QueuePatient[] = [
   },
 ];
 
-export const workflowOrder: WorkflowStatus[] = [
+export const workflowOrder: string[] = [
   "Pending Approval",
   "Approved",
   "In Progress",

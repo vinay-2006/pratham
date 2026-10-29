@@ -34,15 +34,22 @@ export function TopBar() {
   return (
     <>
       <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background/85 px-3 backdrop-blur md:px-5">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors hover:bg-muted"
+        >
+          ← Portfolio
+        </Link>
+        <Separator orientation="vertical" className="h-6" />
         <SidebarTrigger />
         <Separator orientation="vertical" className="h-6" />
 
         <RoleSwitcher role={role} onChange={handleRoleChange} />
 
-        <Separator orientation="vertical" className="hidden h-6 md:block" />
+        <Separator orientation="vertical" className="hidden h-6 xl:block" />
 
         {patientCase ? (
-          <div className="hidden items-center gap-2 md:flex">
+          <div className="hidden items-center gap-2 xl:flex">
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted">
               <UserRound className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
@@ -56,7 +63,7 @@ export function TopBar() {
             </div>
           </div>
         ) : (
-          <div className="hidden items-center gap-2 md:flex">
+          <div className="hidden items-center gap-2 xl:flex">
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted">
               <UserRound className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
@@ -83,7 +90,7 @@ export function TopBar() {
           />
           <Link
             to={role === "doctor" ? "/doctor/approvals" : "/nurse/dashboard"}
-            className="hidden sm:block"
+            className="hidden lg:block"
           >
             <Counter icon={Bell} label="Pending" value={pendingCount} tone="primary" />
           </Link>

@@ -16,8 +16,10 @@ Architecture (PRATHAM v1):
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -34,6 +36,122 @@ logger = logging.getLogger(__name__)
 
 # ── Version constants ────────────────────────────────────────────────────────
 PRATHAM_VERSION = "1.0"
+
+# ── Report Cache ─────────────────────────────────────────────────────────────
+# In-memory, evidence-fingerprint-based cache to avoid re-running clinical
+# reasoning + LLM interpretation on every GET.
+#
+# DESIGN NOTES:
+#   - NOT authoritative. A cache miss re-generates the full report identically.
+#   - Fingerprint is built from pipeline stage statuses, evidence count,
+#     and latest timestamps of lab/imaging/aggregation results.
+#   - Invalidated explicitly when evidence changes (see invalidate_report_cache).
+#   - TTL of 120s as a safety net against unbounded staleness.
+#   - Single-worker only. Multi-worker deployments should use a shared cache.
+
+_REPORT_CACHE: Dict[str, Dict[str, Any]] = {}
+_REPORT_CACHE_TTL = 120  # seconds
+
+
+def _build_evidence_fingerprint(intake_id: str) -> str:
+    """
+    Build a fingerprint string from the current evidence state for an intake.
+    Changes to any pipeline stage, evidence file, or AI result will change
+    the fingerprint, causing the cached report to be invalidated.
+
+    NOTE: This involves DB queries. Only called when TTL expires, NOT on
+    every cache hit. The fast path relies on explicit invalidation via
+    invalidate_report_cache() at every mutation point.
+    """
+    parts: list[str] = [intake_id]
+
+    # Pipeline stage statuses
+    try:
+        from app.services.pipeline_status_service import get_pipeline_status
+        pipeline = get_pipeline_status(intake_id)
+        for stage, info in sorted(pipeline.get("stages", {}).items()):
+            parts.append(f"{stage}:{info.get('status', 'unknown')}")
+            if info.get("completed_at"):
+                parts.append(str(info["completed_at"]))
+    except Exception:
+        parts.append("pipeline:unknown")
+
+    # Evidence file count + latest upload timestamp
+    try:
+        ev_rows = evidence_repository.get_by_intake_id_with_columns(
+            intake_id, columns="id, uploaded_at", order_by="uploaded_at", desc=True,
+        )
+        parts.append(f"ev_count:{len(ev_rows)}")
+        if ev_rows:
+            parts.append(f"ev_latest:{ev_rows[0].get('uploaded_at', '')}")
+    except Exception:
+        parts.append("ev:unknown")
+
+    # Aggregation latest timestamp
+    try:
+        agg = aggregation_results_repository.get_by_intake_id(intake_id)
+        if agg:
+            parts.append(f"agg:{agg.get('created_at', '')}")
+    except Exception:
+        pass
+
+    fingerprint_str = "|".join(parts)
+    return hashlib.md5(fingerprint_str.encode()).hexdigest()
+
+
+def invalidate_report_cache(intake_id: str) -> None:
+    """
+    Explicitly invalidate the cached report for an intake.
+    Call this when evidence changes (upload, deletion, re-analysis).
+    """
+    if intake_id in _REPORT_CACHE:
+        logger.info("[PRATHAM/REPORT] Cache invalidated for intake %s", intake_id)
+        del _REPORT_CACHE[intake_id]
+
+
+def _get_cached_report(intake_id: str) -> Optional[Dict[str, Any]]:
+    """
+    Two-tier cache lookup:
+      1. Fast path (no DB queries): if entry exists and TTL is valid, return it.
+         Correctness relies on explicit invalidation at every mutation point.
+      2. Slow path (on TTL expiry): rebuild evidence fingerprint to verify
+         nothing changed via an untracked path. This is a safety net.
+    Returns (report, needs_fingerprint_for_store) or (None, True).
+    """
+    entry = _REPORT_CACHE.get(intake_id)
+    if entry is None:
+        return None
+
+    age = time.monotonic() - entry["cached_at"]
+
+    # Fast path: within TTL, return immediately (zero DB queries)
+    if age <= _REPORT_CACHE_TTL:
+        logger.info("[PRATHAM/REPORT] Cache HIT for intake %s (age=%.0fs)", intake_id, age)
+        return entry["report"]
+
+    # Slow path: TTL expired — check fingerprint to avoid unnecessary regen
+    fingerprint = _build_evidence_fingerprint(intake_id)
+    if entry.get("fingerprint") == fingerprint:
+        # Evidence unchanged — refresh TTL and return cached
+        entry["cached_at"] = time.monotonic()
+        logger.info("[PRATHAM/REPORT] Cache RENEWED for intake %s (fingerprint match, age was %.0fs)", intake_id, age)
+        return entry["report"]
+
+    # Fingerprint mismatch — evidence changed, need to regenerate
+    logger.info("[PRATHAM/REPORT] Cache STALE for intake %s (fingerprint mismatch after %.0fs)", intake_id, age)
+    del _REPORT_CACHE[intake_id]
+    return None
+
+
+def _store_cached_report(intake_id: str, report: Dict[str, Any]) -> None:
+    """Store a report in the cache with current fingerprint."""
+    fingerprint = _build_evidence_fingerprint(intake_id)
+    _REPORT_CACHE[intake_id] = {
+        "fingerprint": fingerprint,
+        "cached_at": time.monotonic(),
+        "report": report,
+    }
+    logger.info("[PRATHAM/REPORT] Cache STORED for intake %s (fingerprint=%s)", intake_id, fingerprint[:8])
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -77,8 +195,16 @@ async def get_complete_report(intake_id: str) -> Dict[str, Any]:
     Fetch and assemble the complete clinical intelligence report
     for a given intake_id.  Returns the unified 17-section Report DTO.
 
+    Uses an evidence-fingerprint cache to avoid re-running clinical
+    reasoning and LLM interpretation when evidence hasn't changed.
+
     Raises ValueError if the intake is not found.
     """
+
+    # ── 0. Cache check — skip expensive work if evidence is unchanged ─
+    cached = _get_cached_report(intake_id)
+    if cached is not None:
+        return cached
 
     # ── 1. Intake + Patient + Vitals + Symptoms + Risk ────────────────
     intake = intake_repository.get_by_id(
@@ -281,6 +407,10 @@ async def get_complete_report(intake_id: str) -> Dict[str, Any]:
     base_report = {
         "intake_id": intake_id,
         "generated_at": datetime.now().isoformat(),
+        "case_id": intake.get("case_id") or f"PRA-2026-{intake_id[:6].upper()}",
+        "arrival_type": intake.get("arrival_type") or "walk_in",
+        "severity": severity,
+        "created_at": str(created) if created else None,
 
         "patient_summary": {
             "patient_id": patient_row.get("id"),
@@ -678,5 +808,8 @@ async def get_complete_report(intake_id: str) -> Dict[str, Any]:
         base_report["validation"] = validation_result
     except Exception as exc:
         logger.warning("[PRATHAM/REPORT] Report validation skipped (non-fatal)  intake=%s  error=%s", intake_id, exc)
+
+    # ── 11. Store in cache ────────────────────────────────────────────
+    _store_cached_report(intake_id, base_report)
 
     return base_report

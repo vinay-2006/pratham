@@ -23,7 +23,7 @@ import {
   Users,
 } from "lucide-react";
 
-const API_BASE = "http://localhost:8000/api";
+import { API_BASE } from "@/lib/api-config";
 
 interface CopilotResponse {
   answer_type: string;
@@ -107,7 +107,7 @@ export function CopilotAssistantDrawer({
         ],
         context_stats: { facts_used: 12, knowledge_rules: 1, timeline_events: 2, lab_features: 6 },
         engine_versions: { copilot: "1.0", reasoning: "2.1", knowledge_base: "2.0" },
-        safety: { llm_used: False, hallucination_guard: "PASS", grounding: "DETERMINISTIC_EXACT" },
+        safety: { llm_used: false, hallucination_guard: "PASS", grounding: "DETERMINISTIC_EXACT" },
       },
     },
   ]);
@@ -183,7 +183,7 @@ export function CopilotAssistantDrawer({
           ],
           context_stats: { facts_used: 28, knowledge_rules: 2, timeline_events: 2, lab_features: 8 },
           engine_versions: { copilot: "1.0", reasoning: "2.1", knowledge_base: "2.0" },
-          safety: { llm_used: True, hallucination_guard: "PASS", grounding: "STRICT" },
+          safety: { llm_used: true, hallucination_guard: "PASS", grounding: "STRICT" },
         },
       };
       setMessages((prev) => [...prev, fallbackMsg]);

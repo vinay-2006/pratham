@@ -10,7 +10,7 @@ import logging
 from fastapi import APIRouter
 from typing import Dict, Any
 
-from app.db.supabase_client import supabase
+from app.domains.pipeline.repository import pipeline_repository
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -118,8 +118,7 @@ def scan_and_cache_metrics(app_instance=None):
 async def get_platform_telemetry() -> Dict[str, Any]:
     """Retrieve cached codebase stats paired with live average execution latency."""
     try:
-        res = supabase.table("pipeline_status").select("stage, duration_ms, status").execute()
-        stages_data = res.data or []
+        stages_data = pipeline_repository.get_all("stage, duration_ms, status")
         stage_metrics = {}
         stage_counts = {}
         

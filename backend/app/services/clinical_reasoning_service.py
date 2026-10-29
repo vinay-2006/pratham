@@ -213,8 +213,9 @@ def derive_clinical_conclusions(facts: Dict[str, Any]) -> Dict[str, Any]:
     }
 
     vitals_dict = {
-        item["parameter"].lower().replace(" ", "_").replace("₂", "2"): item["value"]
+        (item.get("parameter") or "").lower().replace(" ", "_").replace("₂", "2"): item["value"]
         for item in facts.get("vitals_analysis", [])
+        if item.get("parameter")
     }
     context = build_clinical_context(
         patient_data=patient_dict,
@@ -329,7 +330,7 @@ def _compute_data_completeness(facts: Dict) -> Dict[str, Dict]:
             "critical": False,
         },
         "imaging": {
-            "label": "Medical Imaging",
+            "label": "Chest X-ray Interpretation",
             "available": facts.get("imaging") is not None,
             "critical": False,
         },
@@ -356,7 +357,7 @@ def _compute_subsystem_agreement(facts: Dict) -> tuple[str, List[str]]:
 
     active_sources = sum(1 for x in [risk_scores and any(v > 0 for v in risk_scores.values()), lab, imaging, agg] if x)
     if active_sources < 2:
-        return "INSUFFICIENT DATA", ["Insufficient active AI subsystems to evaluate agreement"]
+        return "INSUFFICIENT DATA", ["Insufficient active clinical data sources to evaluate agreement"]
 
     # Check 1: Do risk scores and imaging agree on respiratory vs cardiac?
     resp_risk = risk_scores.get("respiratory", 0)
@@ -395,8 +396,8 @@ def _compute_subsystem_agreement(facts: Dict) -> tuple[str, List[str]]:
     active_flags = facts.get("active_nlp_flags", [])
     if agg and active_flags:
         primary = (agg.get("primary_condition") or "").lower()
-        has_cardiac_flag = any("cardiac" in f.lower() for f in active_flags)
-        has_respiratory_flag = any("respiratory" in f.lower() or "breathlessness" in f.lower() for f in active_flags)
+        has_cardiac_flag = any("cardiac" in (f or "").lower() for f in active_flags)
+        has_respiratory_flag = any("respiratory" in (f or "").lower() or "breathlessness" in (f or "").lower() for f in active_flags)
 
         if primary == "acs" and has_cardiac_flag:
             details.append("NLP cardiac flags support ACS finding")
@@ -464,19 +465,19 @@ def _compute_clinical_confidence(
         score += 5
         factors.append(f"⚠ Only {available}/{total} data sources available (limited)")
 
-    # Factor 3: Subsystem agreement
+    # Factor 3: Clinical source agreement
     if agreement == "HIGH":
         score += 30
-        factors.append("✓ All available subsystems agree — no conflicting evidence detected")
+        factors.append("✓ All available clinical data sources agree — no conflicting evidence detected")
     elif agreement == "MODERATE":
         score += 15
-        factors.append("⚠ Partial agreement — some subsystem findings conflict")
+        factors.append("⚠ Partial agreement — some clinical findings conflict")
     elif agreement == "INSUFFICIENT DATA":
         score += 0
-        factors.append("⚠ Subsystem agreement cannot be calculated (insufficient data sources)")
+        factors.append("⚠ Clinical source agreement cannot be calculated (insufficient data sources)")
     else:
         score += 5
-        factors.append("⚠ Low agreement — significant conflicts between subsystems")
+        factors.append("⚠ Low agreement — significant conflicts between clinical data sources")
 
     # Force cap for sparse data (<3 available sources or missing aggregation)
     if available < 3 or not agg:
@@ -484,10 +485,10 @@ def _compute_clinical_confidence(
         factors.append("⚠ Sparse evidence (<3 active sources) — confidence capped at LOW")
     elif agreement == "LOW":
         level = "LOW"
-        factors.append("⚠ Severe subsystem conflict — confidence capped at LOW")
+        factors.append("⚠ Severe conflict between clinical data sources — confidence capped at LOW")
     elif agreement == "MODERATE" and score >= 85:
         level = "MODERATE"
-        factors.append("⚠ Subsystem conflict — confidence capped at MODERATE")
+        factors.append("⚠ Partial conflict between clinical data sources — confidence capped at MODERATE")
     elif score >= 95:
         level = "VERY HIGH"
     elif score >= 85:
@@ -550,14 +551,14 @@ def _compile_evidence(facts: Dict) -> tuple[List[str], List[str]]:
     # NLP evidence
     nlp_flags = facts.get("active_nlp_flags", [])
     if primary == "ACS":
-        if any("cardiac" in f.lower() or "chest" in f.lower() for f in nlp_flags):
+        if any("cardiac" in (f or "").lower() or "chest" in (f or "").lower() for f in nlp_flags):
             supporting.append("NLP detected cardiac risk signals in clinical notes")
-        if any("respiratory" in f.lower() for f in nlp_flags) and not any("cardiac" in f.lower() for f in nlp_flags):
+        if any("respiratory" in (f or "").lower() for f in nlp_flags) and not any("cardiac" in (f or "").lower() for f in nlp_flags):
             conflicting.append("NLP flags suggest respiratory pattern rather than cardiac")
     elif primary in ("Pneumonia", "PE"):
-        if any("respiratory" in f.lower() or "breathlessness" in f.lower() for f in nlp_flags):
+        if any("respiratory" in (f or "").lower() or "breathlessness" in (f or "").lower() for f in nlp_flags):
             supporting.append("NLP detected respiratory distress signals")
-        if any("cardiac" in f.lower() for f in nlp_flags) and not any("respiratory" in f.lower() for f in nlp_flags):
+        if any("cardiac" in (f or "").lower() for f in nlp_flags) and not any("respiratory" in (f or "").lower() for f in nlp_flags):
             conflicting.append("NLP flags suggest cardiac pattern rather than respiratory")
 
     # Symptom evidence
@@ -599,11 +600,11 @@ def _compile_evidence(facts: Dict) -> tuple[List[str], List[str]]:
         pred = (lab.get("prediction") or "").lower()
         prob = lab.get("risk_probability", 0) or 0
         if primary == "ACS" and pred == "high_risk":
-            supporting.append(f"Laboratory model indicates high cardiac risk (probability: {prob*100:.1f}%)")
+            supporting.append(f"Laboratory analysis indicates high cardiac risk (probability: {prob*100:.1f}%)")
         elif primary == "ACS" and pred == "low_risk":
-            conflicting.append(f"Laboratory model indicates low cardiac risk (probability: {prob*100:.1f}%)")
+            conflicting.append(f"Laboratory analysis indicates low cardiac risk (probability: {prob*100:.1f}%)")
         elif primary in ("Pneumonia", "PE") and pred == "high_risk":
-            conflicting.append("Laboratory model flags cardiac risk, which may suggest alternative cardiac etiology")
+            conflicting.append("Laboratory analysis flags cardiac risk, which may suggest alternative cardiac etiology")
 
     # Imaging evidence
     imaging = facts.get("imaging")

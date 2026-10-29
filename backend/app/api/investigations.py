@@ -371,10 +371,47 @@ async def get_patient_detail(intake_id: str):
         import asyncio
 
         def _fetch_inv():
-            return investigation_repository.get_by_intake_id_with_columns(
-                intake_id,
-                columns="id, investigation_type, status, approved_at, rejected_at, review_notes, created_at",
-            )
+            def _is_transient(exc: Exception) -> bool:
+                transient_keywords = (
+                    "server disconnected",
+                    "connectionterminated",
+                    "connection reset",
+                    "connection aborted",
+                    "remote protocol error",
+                    "connection refused",
+                    "broken pipe",
+                    "timed out",
+                    "timeout",
+                )
+                curr: Optional[BaseException] = exc
+                while curr is not None:
+                    if isinstance(curr, (ConnectionError, TimeoutError, OSError)):
+                        return True
+                    name = type(curr).__name__.lower()
+                    if "protocolerror" in name or "transporterror" in name or "timeouterror" in name:
+                        return True
+                    msg = str(curr).lower()
+                    if any(kw in msg for kw in transient_keywords):
+                        return True
+                    curr = curr.__cause__ or curr.__context__
+                return False
+
+            try:
+                return investigation_repository.get_by_intake_id_with_columns(
+                    intake_id,
+                    columns="id, investigation_type, status, approved_at, rejected_at, review_notes, created_at",
+                )
+            except Exception as exc:
+                if not _is_transient(exc):
+                    raise
+                logger.warning(
+                    "[Investigations] Retrying investigation fetch for intake %s after transient error: %s",
+                    intake_id, exc,
+                )
+                return investigation_repository.get_by_intake_id_with_columns(
+                    intake_id,
+                    columns="id, investigation_type, status, approved_at, rejected_at, review_notes, created_at",
+                )
 
         def _fetch_ev():
             try:

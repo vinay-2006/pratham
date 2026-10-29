@@ -46,15 +46,9 @@ async def pipeline_status(intake_id: str):
         )
         if all_empty:
             # Verify intake exists
-            from app.db.supabase_client import supabase
-            intake_check = (
-                supabase.table("emergency_intake")
-                .select("id")
-                .eq("id", intake_id)
-                .limit(1)
-                .execute()
-            )
-            if not intake_check.data:
+            from app.domains.triage.repository import intake_repository
+            intake_check = intake_repository.get_by_id(intake_id, columns="id")
+            if not intake_check:
                 raise HTTPException(
                     status_code=404,
                     detail=f"Intake {intake_id!r} not found.",

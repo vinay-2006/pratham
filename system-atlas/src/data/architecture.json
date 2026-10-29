@@ -1,0 +1,12 @@
+{
+  "modules": [
+    {
+      "name": "NLP",
+      "status": "Active"
+    },
+    {
+      "name": "Risk",
+      "status": "Completed"
+    }
+  ]
+}

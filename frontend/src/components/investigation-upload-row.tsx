@@ -32,9 +32,11 @@ import { toast } from "sonner";
 import {
   validateFile,
   EVIDENCE_FORMATS,
+  MAX_FILE_SIZE_MB,
 } from "@/lib/upload-validator";
 
 import { API_BASE } from "@/lib/api-config";
+import { apiErrorMessage } from "@/lib/api-error";
 
 export interface EvidenceFile {
   evidence_id: string;
@@ -167,7 +169,7 @@ export function InvestigationUploadRow({ intakeId, investigation, onUploaded }: 
     } catch (err) {
       toast.error("Upload failed", {
         description: axios.isAxiosError(err)
-          ? err.response?.data?.detail ?? err.message
+          ? apiErrorMessage(err)
           : "An unexpected error occurred.",
       });
     } finally {
@@ -189,7 +191,7 @@ export function InvestigationUploadRow({ intakeId, investigation, onUploaded }: 
     } catch (err) {
       toast.error("Delete failed", {
         description: axios.isAxiosError(err)
-          ? err.response?.data?.detail ?? err.message
+          ? apiErrorMessage(err)
           : "An unexpected error occurred.",
       });
     } finally {
@@ -226,7 +228,7 @@ export function InvestigationUploadRow({ intakeId, investigation, onUploaded }: 
     } catch (err) {
       toast.error("Analysis failed", {
         description: axios.isAxiosError(err)
-          ? err.response?.data?.detail ?? err.message
+          ? apiErrorMessage(err)
           : "An unexpected error occurred.",
       });
     } finally {
