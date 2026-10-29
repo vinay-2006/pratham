@@ -11,6 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import intake, nlp, risk, investigation, imaging, labs, aggregation, investigations, evidence, lab_analysis, imaging_analysis, report, pipeline, admin, command_center, explainability, search, copilot, demo, platform_metrics, release
 from app.ml.lab_model import load_lab_model
@@ -115,14 +116,35 @@ async def global_exception_handler(request: Request, exc: Exception):
         request_id=request_id,
         pipeline_stage="UNHANDLED_EXCEPTION"
     )
+    # This handler runs outside CORSMiddleware, so add the CORS headers here;
+    # otherwise browsers report a generic network error instead of the 500.
+    headers = {}
+    origin = request.headers.get("origin")
+    if origin and origin in _cors_origins:
+        headers = {"Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "true", "Vary": "Origin"}
     return JSONResponse(
         status_code=500,
         content={
             "detail": "An internal server error occurred.",
             "request_id": request_id,
             "status": "error"
-        }
+        },
+        headers=headers,
     )
+
+
+# ── Never expose internal exception text in 5xx responses ───────────────────
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    detail = exc.detail
+    if exc.status_code >= 500:
+        log_event(
+            message=f"HTTP {exc.status_code} on {request.method} {request.url.path}: {exc.detail}",
+            level=logging.ERROR,
+            pipeline_stage="HTTP_5XX",
+        )
+        detail = "An internal server error occurred."
+    return JSONResponse(status_code=exc.status_code, content={"detail": detail}, headers=getattr(exc, "headers", None))
 
 
 # ── Convert Pydantic validation errors to 400 Bad Request ───────────────────

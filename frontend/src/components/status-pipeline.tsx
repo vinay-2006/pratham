@@ -1,12 +1,12 @@
 import { Check } from "lucide-react";
-import { workflowOrder, type WorkflowStatus } from "@/lib/mock-data";
+import { workflowOrder } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
 
 export function StatusPipeline({
   current,
   className,
 }: {
-  current: WorkflowStatus;
+  current: string;
   className?: string;
 }) {
   const idx = workflowOrder.indexOf(current);

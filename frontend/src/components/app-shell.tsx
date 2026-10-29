@@ -31,11 +31,11 @@ export function AppShell() {
     <SidebarProvider>
       <div className="flex min-h-dvh w-full bg-background">
         <AppSidebar />
-        <SidebarInset>
+        <SidebarInset className="min-w-0">
           <TopBar />
-          <main className="flex-1">
+          <div className="flex-1">
             <Outlet />
-          </main>
+          </div>
         </SidebarInset>
       </div>
     </SidebarProvider>

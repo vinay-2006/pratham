@@ -39,7 +39,7 @@ interface NavItem {
   title: string;
   url: string;
   icon: typeof Users;
-  badgeKey?: "pending" | "queue";
+  badgeKey?: "pending" | "queue" | "reports";
 }
 
 interface NavGroup {
@@ -109,7 +109,6 @@ const showcaseGroup: NavGroup = {
     { title: "SaaS Landing Page", url: "/", icon: Activity },
     { title: "Knowledge Base", url: "/knowledge", icon: BookOpen },
     { title: "Architecture", url: "/architecture", icon: Layers },
-    { title: "Admin Telemetry", url: "/admin", icon: LayoutDashboard },
   ],
 };
 

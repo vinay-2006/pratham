@@ -407,6 +407,10 @@ async def get_complete_report(intake_id: str) -> Dict[str, Any]:
     base_report = {
         "intake_id": intake_id,
         "generated_at": datetime.now().isoformat(),
+        "case_id": intake.get("case_id") or f"PRA-2026-{intake_id[:6].upper()}",
+        "arrival_type": intake.get("arrival_type") or "walk_in",
+        "severity": severity,
+        "created_at": str(created) if created else None,
 
         "patient_summary": {
             "patient_id": patient_row.get("id"),

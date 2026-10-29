@@ -46,10 +46,10 @@ export function TopBar() {
 
         <RoleSwitcher role={role} onChange={handleRoleChange} />
 
-        <Separator orientation="vertical" className="hidden h-6 md:block" />
+        <Separator orientation="vertical" className="hidden h-6 xl:block" />
 
         {patientCase ? (
-          <div className="hidden items-center gap-2 md:flex">
+          <div className="hidden items-center gap-2 xl:flex">
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted">
               <UserRound className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
@@ -63,7 +63,7 @@ export function TopBar() {
             </div>
           </div>
         ) : (
-          <div className="hidden items-center gap-2 md:flex">
+          <div className="hidden items-center gap-2 xl:flex">
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted">
               <UserRound className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
@@ -90,7 +90,7 @@ export function TopBar() {
           />
           <Link
             to={role === "doctor" ? "/doctor/approvals" : "/nurse/dashboard"}
-            className="hidden sm:block"
+            className="hidden lg:block"
           >
             <Counter icon={Bell} label="Pending" value={pendingCount} tone="primary" />
           </Link>

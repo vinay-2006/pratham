@@ -449,7 +449,7 @@ function NurseIntakePage() {
       console.error("Intake submission failed:", error);
       toast.error("Submission failed", {
         description: axios.isAxiosError(error)
-          ? error.response?.data?.detail ?? error.message
+          ? apiErrorMessage(error)
           : "An unexpected error occurred. Please try again.",
       });
     } finally {
@@ -860,6 +860,7 @@ function NurseIntakePage() {
 }
 
 import { forwardRef } from "react";
+import { apiErrorMessage } from "@/lib/api-error";
 
 const Field = forwardRef<
   HTMLInputElement,

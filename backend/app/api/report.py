@@ -34,7 +34,15 @@ async def get_clinical_report(intake_id: str):
     Consolidated Clinical Intelligence Report (JSON).
     """
     try:
-        return await get_complete_report(intake_id)
+        report = dict(await get_complete_report(intake_id))
+        # The report body may be served from cache; workflow status must be live
+        # so the UI can detect reviewed/closed cases immediately.
+        from app.domains.triage.repository import intake_repository
+        from app.services.workflow_service import get_workflow_status
+
+        row = intake_repository.get_by_id(intake_id, columns="status") or {}
+        report["status"] = get_workflow_status(intake_id, row.get("status"))
+        return report
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except HTTPException:

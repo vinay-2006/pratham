@@ -309,6 +309,13 @@ export const initialNotifications: DoctorNotification[] = [
 ];
 
 // ===== Patient queue (for nurse dashboard) =====
+export type PatientStatus =
+  | "Intake Pending"
+  | "Awaiting Doctor Approval"
+  | "Investigation Approved"
+  | "Investigation Running"
+  | "Results Available";
+
 export interface QueuePatient {
   id: string;
   name: string;
@@ -382,7 +389,7 @@ export const patientQueue: QueuePatient[] = [
   },
 ];
 
-export const workflowOrder: WorkflowStatus[] = [
+export const workflowOrder: string[] = [
   "Pending Approval",
   "Approved",
   "In Progress",

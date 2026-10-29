@@ -225,6 +225,12 @@ export interface PipelineStatus {
 export interface ClinicalReport {
   intake_id: string;
   generated_at: string;
+  /** Live workflow status (e.g. "clinical_report_ready", "case_closed"). */
+  status?: string;
+  case_id?: string;
+  arrival_type?: string;
+  severity?: string;
+  created_at?: string | null;
   report_version: string;
   patient_summary: PatientSummary;
   vitals: Vitals;
@@ -239,6 +245,10 @@ export interface ClinicalReport {
   investigations: { id: string; investigation_type: string; status: string; review_notes?: string }[];
   clinical_interpretation: ClinicalInterpretation;
   clinical_conclusions: ClinicalConclusions;
+  clinician_report?: {
+    investigations_matrix?: { status: string; [key: string]: unknown }[];
+    [key: string]: unknown;
+  };
 }
 
 // ── Fetch functions ─────────────────────────────────────────────────────
