@@ -24,6 +24,9 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.db.supabase_client import supabase
+from app.domains.ai.repository import imaging_results_repository
+from app.domains.evidence.repository import evidence_repository
+from app.domains.triage.repository import intake_repository
 from app.ml.imaging_model import run_imaging_inference, generate_gradcam, MODEL_NAME
 
 logger = logging.getLogger(__name__)
@@ -55,19 +58,16 @@ class ImagingAnalyzeResponse(BaseModel):
 def _fetch_evidence_record(evidence_id: str) -> dict:
     """Fetch a single evidence row by ID. Raises HTTPException on not-found."""
     try:
-        res = (
-            supabase.table("evidence")
-            .select("id, intake_id, evidence_type, file_url, file_name")
-            .eq("id", evidence_id)
-            .limit(1)
-            .execute()
+        row = evidence_repository.get_by_id_with_columns(
+            evidence_id,
+            columns="id, intake_id, evidence_type, file_url, file_name",
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Database error fetching evidence: {exc}")
 
-    if not res.data:
+    if not row:
         raise HTTPException(status_code=404, detail=f"Evidence {evidence_id!r} not found.")
-    return res.data[0]
+    return row
 
 
 def _resolve_storage_path(evidence_row: dict) -> str:
@@ -168,14 +168,8 @@ async def imaging_analyze(body: ImagingAnalyzeRequest) -> ImagingAnalyzeResponse
     try:
         # 1. Verify intake exists
         try:
-            intake_res = (
-                supabase.table("emergency_intake")
-                .select("id")
-                .eq("id", intake_id)
-                .limit(1)
-                .execute()
-            )
-            if not intake_res.data:
+            intake_check = intake_repository.get_by_id(intake_id, columns="id")
+            if not intake_check:
                 raise HTTPException(status_code=404, detail=f"Intake {intake_id!r} not found.")
         except HTTPException:
             raise
@@ -253,17 +247,13 @@ async def imaging_analyze(body: ImagingAnalyzeRequest) -> ImagingAnalyzeResponse
             db_row["gradcam_url"] = gradcam_url
 
         imaging_result_id = ""
-        try:
-            insert_res = supabase.table("imaging_results").insert(db_row).execute()
-            if insert_res.data:
-                imaging_result_id = insert_res.data[0].get("id", "")
+        inserted = imaging_results_repository.insert_safe(db_row)
+        if inserted:
+            imaging_result_id = inserted.get("id", "")
             logger.info(
                 "[PRATHAM/ML] imaging_results row inserted: id=%s intake=%s prediction=%s prob=%.4f",
                 imaging_result_id, intake_id, result["prediction"], result["pneumonia_probability"],
             )
-        except Exception as db_exc:
-            # Non-fatal: still return the prediction even if DB write fails
-            logger.error("[PRATHAM/ML] imaging_results insert failed (non-fatal): %s", db_exc)
 
         mark_completed(intake_id, "imaging")
 
@@ -294,22 +284,14 @@ async def get_imaging_results(intake_id: str):
     Return the latest imaging_results row for the given intake_id.
     """
     try:
-        res = (
-            supabase.table("imaging_results")
-            .select("id, intake_id, evidence_id, model_name, prediction, pneumonia_probability, confidence, created_at")
-            .eq("intake_id", intake_id)
-            .order("created_at", desc=True)
-            .limit(1)
-            .execute()
-        )
-        rows = res.data or []
-        if not rows:
+        _cols = "id, intake_id, evidence_id, model_name, prediction, pneumonia_probability, confidence, created_at"
+        latest = imaging_results_repository.get_latest(intake_id, _cols)
+        if not latest:
             raise HTTPException(
                 status_code=404,
                 detail=f"No imaging results found for intake {intake_id!r}.",
             )
 
-        latest = rows[0]
         return {
             "imaging_result_id": latest.get("id"),
             "intake_id": latest.get("intake_id"),

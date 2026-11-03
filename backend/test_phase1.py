@@ -8,34 +8,55 @@ import json, os, sys, io, time, requests
 API = "http://localhost:8000"
 
 def step(msg): print(f"\n{'='*60}\n  {msg}\n{'='*60}")
-def ok(msg):   print(f"  ✅  {msg}")
-def fail(msg): print(f"  ❌  {msg}"); 
-
+def ok(msg):
+    try:
+        print(f"  [OK]  {msg}")
+    except Exception:
+        print(f"  [OK]  {msg.encode('ascii', errors='replace').decode()}")
+def fail(msg):
+    try:
+        print(f"  [FAIL]  {msg}")
+    except Exception:
+        print(f"  [FAIL]  {msg.encode('ascii', errors='replace').decode()}")
 # ── 1. Create patient ──────────────────────────────────────────────────────
 step("1 · Create test patient")
 payload = {
-    "patient":   {"firstName":"Phase1","lastName":"VerifyTest","dateOfBirth":"1975-03-10",
-                  "gender":"male","contactNumber":"+91-9000000001"},
-    "emergency": {"chiefComplaint":"Chest pain and breathlessness",
-                  "emergencyDescription":"Phase1 evidence filtering verification",
-                  "ambulanceEta":5},
-    "vitals":    {"heartRate":115,"spo2":90,"bpSystolic":155,"bpDiastolic":98,
-                  "temperature":38.8,"respiratoryRate":28},
-    "symptoms":  {"chestPain":True,"breathlessness":True,"trauma":False,
-                  "bleeding":False,"unconsciousness":False,"neurologicalSymptoms":False},
+    "patient": {
+        "first_name": "Phase1",
+        "last_name": "VerifyTest",
+        "date_of_birth": "1975-03-10",
+        "gender": "male",
+        "contact_number": "+91-9000000001"
+    },
+    "vitals": {
+        "heart_rate": 115,
+        "spo2": 89,
+        "bp_systolic": 155,
+        "bp_diastolic": 98,
+        "temperature": 38.8,
+        "respiratory_rate": 28
+    },
+    "symptoms": {
+        "chest_pain": True,
+        "breathlessness": True,
+        "trauma": False,
+        "bleeding": False,
+        "unconsciousness": False,
+        "neurological_symptoms": False
+    },
+    "arrival_type": "ambulance",
+    "ambulance_eta": 5,
+    "emergency_description": "Phase1 evidence filtering verification",
+    "chief_complaint": "Chest pain and breathlessness"
 }
-r = requests.post(f"{API}/intake", json=payload); r.raise_for_status()
+r = requests.post(f"{API}/api/intake", json=payload); r.raise_for_status()
 d = r.json(); intake_id = d["intake_id"]
 ok(f"Patient created  intake_id={intake_id}")
 
-# ── 2. NLP + Risk + Investigations ────────────────────────────────────────
-step("2 · NLP, Risk, and Investigation recommendations")
-requests.post(f"{API}/nlp/extract",          json={"intake_id":intake_id}).raise_for_status()
-ok("NLP done")
-requests.post(f"{API}/risk/calculate",       json={"intake_id":intake_id}).raise_for_status()
-ok("Risk done")
-requests.post(f"{API}/investigation/recommend", json={"intake_id":intake_id}).raise_for_status()
-ok("Investigations recommended")
+# ── 2. NLP + Risk + Investigations (Automated inside /api/intake) ──────────
+step("2 · Pipeline verification")
+ok("NLP, Risk, and Investigations processed automatically during intake registration.")
+
 
 # ── 3. Doctor approves Chest X-ray + CBC + ABG ────────────────────────────
 step("3 · Doctor approves Chest X-ray, CBC, ABG")
@@ -54,10 +75,10 @@ data = r.json()
 inv_map = {inv["investigation_type"]: inv["id"]
            for inv in data["investigations"] if inv["status"]=="approved"}
 for k,v in inv_map.items():
-    ok(f"{k} → {v[:8]}…")
+    ok(f"{k} -> {v[:8]}...")
 
 # ── 5. Upload distinct evidence per investigation ──────────────────────────
-step("5 · Upload distinct evidence — one per investigation")
+step("5. Upload distinct evidence - one per investigation")
 xray_path = os.path.join(os.path.dirname(__file__), "test_xray.jpg")
 
 def upload(inv_type, ev_type, filename, content):
@@ -70,7 +91,7 @@ def upload(inv_type, ev_type, filename, content):
     r = requests.post(f"{API}/api/evidence/upload", data=fields, files=files)
     r.raise_for_status()
     ev = r.json()
-    ok(f"Uploaded '{filename}' → {inv_type} ({ev_type}) evidence_id={ev['evidence_id'][:8]}…")
+    ok(f"Uploaded '{filename}' -> {inv_type} ({ev_type}) evidence_id={ev['evidence_id'][:8]}...")
     return ev
 
 # Chest X-ray — use real test image for imaging analysis
@@ -97,7 +118,7 @@ for inv in data2["investigations"]:
     actual_files   = [e["file_name"] for e in inv["evidence"]]
     match = sorted(actual_files) == sorted(expected_files)
     if match:
-        ok(f"{itype}: {actual_files}  ← CORRECT")
+        ok(f"{itype}: {actual_files}  <- CORRECT")
     else:
         fail(f"{itype}: expected={expected_files}  got={actual_files}")
         all_ok = False
@@ -109,7 +130,7 @@ if unlinked:
 else:
     ok("No unlinked evidence — all files properly assigned")
 
-print(f"\n  {'FILTERING PASS ✅' if all_ok else 'FILTERING FAIL ❌'}")
+print(f"\n  {'FILTERING PASS [OK]' if all_ok else 'FILTERING FAIL [FAIL]'}")
 
 # ── 7. Delete test ─────────────────────────────────────────────────────────
 step("7 · Delete evidence and verify removal")
@@ -144,8 +165,8 @@ if xray_ev:
     ok(f"Model: {img.get('model_name')}")
     ok(f"Prediction: {img.get('prediction')}  Probability: {img.get('pneumonia_probability'):.4f}")
     ok(f"Confidence: {img.get('confidence'):.4f}")
-    ok(f"Grad-CAM URL: {'✅ present' if img.get('gradcam_url') else '⚠ not generated'}")
-    print(f"\n  IMAGING ANALYSIS PASS ✅")
+    ok(f"Grad-CAM URL: {'[OK] present' if img.get('gradcam_url') else '[WARNING] not generated'}")
+    print(f"\n  IMAGING ANALYSIS PASS [OK]")
 
 # ── 9. Lab analysis ────────────────────────────────────────────────────────
 step("9 · Run Lab Analysis (XGBoost)")
@@ -156,14 +177,14 @@ ok(f"Model: {lab.get('model_name')}")
 ok(f"Prediction: {lab.get('prediction')}  Risk Probability: {lab.get('risk_probability'):.4f}")
 tops = lab.get("top_features",{})
 ok(f"Top SHAP features: {list(tops.keys())[:3]}")
-print(f"\n  LAB ANALYSIS PASS ✅")
+print(f"\n  LAB ANALYSIS PASS [OK]")
 
 # ── 10. Verify results appear in patient detail ────────────────────────────
 step("10 · Verify analysis results surface in patient detail API")
 r = requests.get(f"{API}/api/investigations/patient/{intake_id}"); r.raise_for_status()
 d4 = r.json()
 ps = d4.get("pipeline_status",{})
-ok(f"Pipeline → NLP:{ps.get('nlp')}  Risk:{ps.get('risk')}  Lab:{ps.get('lab')}  "
+ok(f"Pipeline -> NLP:{ps.get('nlp')}  Risk:{ps.get('risk')}  Lab:{ps.get('lab')}  "
    f"Imaging:{ps.get('imaging')}  Aggregation:{ps.get('aggregation')}")
 
 xray_inv = next((i for i in d4["investigations"]

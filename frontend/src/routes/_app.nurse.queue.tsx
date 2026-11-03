@@ -38,6 +38,7 @@ import { PatientTimeline } from "@/components/patient-timeline";
 import { fetchPatientQueue, confirmArrival, type PatientQueueItem } from "@/lib/patient-queue-api";
 import { WorkflowStatus, WORKFLOW_LABELS } from "@/lib/mock-data";
 import { cn } from "@/lib/utils";
+import { apiErrorMessage } from "@/lib/api-error";
 
 export const Route = createFileRoute("/_app/nurse/queue")({
   head: () => ({
@@ -544,7 +545,7 @@ function NurseQueue() {
                 <p className="text-sm font-semibold text-rose-700 dark:text-rose-400">Failed to load active patients queue</p>
                 <p className="mt-0.5 text-xs text-rose-600">
                   {axios.isAxiosError(error)
-                    ? error.response?.data?.detail ?? error.message
+                    ? apiErrorMessage(error)
                     : "An unexpected error occurred."}
                 </p>
               </div>

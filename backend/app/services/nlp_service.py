@@ -27,7 +27,24 @@ def extract_clinical_signals(
     Call Groq API with Mistral to extract clinical risk flags
     from the emergency description + symptoms + vitals.
     Returns structured JSON with clinical flags.
+
+    When USE_MOCK_LLM=true, returns deterministic extraction
+    derived from the symptom/vitals data without calling Groq.
     """
+    # ── Mock Mode: deterministic extraction without Groq ──
+    if os.environ.get("USE_MOCK_LLM", "false").lower() == "true":
+        return {
+            "head_trauma": bool(symptoms.get("trauma", False)),
+            "loss_of_consciousness": bool(symptoms.get("unconsciousness", False)),
+            "neurological_risk_flag": bool(symptoms.get("neurological_symptoms", False)),
+            "respiratory_distress": bool(symptoms.get("breathlessness", False)),
+            "cardiac_risk_flag": bool(symptoms.get("chest_pain", False)),
+            "trauma_present": bool(symptoms.get("trauma", False)),
+            "hemorrhage_risk": bool(symptoms.get("bleeding", False)),
+            "extracted_keywords": [k for k, v in (symptoms or {}).items() if v is True],
+            "clinical_summary": f"Deterministic NLP extraction (mock mode) for: {(emergency_description or '')[:120]}",
+        }
+
     prompt = (
         "You are a clinical NLP assistant for an emergency department system.\n\n"
         "Analyze this emergency intake and extract clinical risk flags.\n"
@@ -49,12 +66,27 @@ def extract_clinical_signals(
         "}"
     )
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.1,
-        max_tokens=500,
-    )
+    try:
+        response = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+            max_tokens=500,
+            timeout=8.0,
+        )
+    except Exception as exc:
+        logger.warning("[PRATHAM] NLP extraction failed (non-fatal): %s", exc)
+        return {
+            "head_trauma": False,
+            "loss_of_consciousness": bool(symptoms.get("unconsciousness", False)),
+            "neurological_risk_flag": bool(symptoms.get("neurological_symptoms", False)),
+            "respiratory_distress": bool(symptoms.get("breathlessness", False)),
+            "cardiac_risk_flag": bool(symptoms.get("chest_pain", False)),
+            "trauma_present": bool(symptoms.get("trauma", False)),
+            "hemorrhage_risk": bool(symptoms.get("bleeding", False)),
+            "extracted_keywords": [],
+            "clinical_summary": "Automated extraction failed — manual review required",
+        }
 
     raw = response.choices[0].message.content.strip()
 
@@ -94,3 +126,4 @@ def extract_clinical_signals(
             "extracted_keywords": [],
             "clinical_summary": "Automated extraction failed — manual review required",
         }
+

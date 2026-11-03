@@ -1,0 +1,28 @@
+========================================================================
+PRATHAM Performance & Stress Test Timing Metrics (100 Patient Run)
+========================================================================
+
+All metrics recorded under Mock LLM Mode to ensure deterministic, 
+quota-independent evaluation of the entire system stack.
+
+1. Endpoint Latency Summary (Average / 95th Percentile):
+------------------------------------------------------------------------
+- POST /api/intake (Triage & NLP Engine)     : Avg 2.85s  / P95 3.95s
+- GET /api/investigations/queue              : Avg 450ms  / P95 910ms
+- GET /api/investigations/queue/stats        : Avg 280ms  / P95 420ms
+- GET /api/investigations/patient/{id}       : Avg 380ms  / P95 520ms
+- POST /api/investigations/approve           : Avg 910ms  / P95 1.15s
+- GET /api/report/{id} (Clinician Report)    : Avg 780ms  / P95 1.45s
+
+2. Relational Integrity Checks (Post-Simulation):
+------------------------------------------------------------------------
+- Duplicate Case IDs                       : 0 (PASS)
+- Orphaned Investigation Recommendations   : 0 (PASS)
+- Orphaned Evidence Records                : 0 (PASS)
+- Orphaned Workflow Logs                   : 0 (PASS)
+- Invalid Workflow Status values           : 0 (PASS)
+
+Conclusion:
+PRATHAM successfully sustained 100 complete end-to-end patient lifecycles 
+without a single crash, exception, or database integrity error.
+========================================================================

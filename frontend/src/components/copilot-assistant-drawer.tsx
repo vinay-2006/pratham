@@ -23,7 +23,8 @@ import {
   Users,
 } from "lucide-react";
 
-const API_BASE = "http://localhost:8000/api";
+import { API_BASE } from "@/lib/api-config";
+import { useAuth } from "@/lib/auth";
 
 interface CopilotResponse {
   answer_type: string;
@@ -63,19 +64,36 @@ interface MessageItem {
 export function CopilotAssistantDrawer({
   isOpen,
   onClose,
-  intakeId = "INT-100",
+  intakeId,
 }: {
   isOpen: boolean;
   onClose: () => void;
   intakeId?: string;
 }) {
+  const { user } = useAuth();
   const [mode, setMode] = useState<"CLINICAL" | "SYSTEM">("CLINICAL");
   const [queryInput, setQueryInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [showWorkState, setShowWorkState] = useState<Record<string, boolean>>({});
   const [activeNode, setActiveNode] = useState<string | null>(null);
 
-  const [messages, setMessages] = useState<MessageItem[]>([
+  const role = user?.role ?? "nurse";
+  const WELCOME: Record<string, { text: string; suggestions: string[] }> = {
+    doctor: {
+      text: "I can explain the differential, compare conditions, and flag conflicting or missing evidence for the selected patient.",
+      suggestions: ["Summarize this patient in 30 seconds", "Why is the top condition ranked first?", "What evidence is missing?", "Which investigation best separates ACS from PE?"],
+    },
+    nurse: {
+      text: "I can summarize triage data, vitals, and what is pending approval for the selected patient. Diagnosis is left to the doctor.",
+      suggestions: ["Summarize this patient", "Which vitals are abnormal?", "What investigations are pending?", "What should I monitor?"],
+    },
+    admin: {
+      text: "I can answer operational questions: queue volumes, investigation backlog, and pipeline health. I have no access to patient records.",
+      suggestions: ["How many cases are in each status?", "How big is the investigation backlog?", "Are any pipeline stages failing?"],
+    },
+  };
+
+  const [messages, setMessages] = useState<MessageItem[]>(() => [
     {
       id: "msg-0",
       sender: "copilot",
@@ -83,31 +101,15 @@ export function CopilotAssistantDrawer({
       response: {
         answer_type: "NARRATIVE",
         answer_confidence: "HIGH",
-        answer: "Welcome to PRATHAM Clinical Copilot. Ask any question regarding patient findings, disease differentials, missing evidence, or pipeline status.",
-        sources: ["Clinical Scoring Engine", "13 Emergency Condition Engine"],
+        answer: "Welcome to PRATHAM Copilot. " + WELCOME[user?.role ?? "nurse"].text,
+        sources: [],
         citations: [],
-        suggested_questions: [
-          "Why was Pneumonia ranked first?",
-          "Compare Pneumonia vs PE",
-          "Why is confidence LOW?",
-          "Summarize patient in 30 seconds",
-        ],
-        show_your_work: {
-          evidence_used: ["Intake INT-100 Baseline"],
-          reasoning_chain: ["Copilot initialized in Clinical Assistant mode"],
-          knowledge_rules_applied: ["pneumonia.yaml"],
-          subsystem_agreement: "100% OPERATIONAL",
-        },
-        evidence_replay_nodes: [
-          { id: "intake", label: "Intake", status: "COMPLETE", data: "Male, 62y" },
-          { id: "vitals", label: "Vitals", status: "COMPLETE", data: "HR 114, SpO2 91%" },
-          { id: "scores", label: "NEWS2", status: "COMPLETE", data: "Score 7 (HIGH)" },
-          { id: "imaging", label: "Imaging", status: "COMPLETE", data: "Infiltrate (88%)" },
-          { id: "conclusion", label: "Pneumonia", status: "VERIFIED", data: "Rank 1" },
-        ],
-        context_stats: { facts_used: 12, knowledge_rules: 1, timeline_events: 2, lab_features: 6 },
-        engine_versions: { copilot: "1.0", reasoning: "2.1", knowledge_base: "2.0" },
-        safety: { llm_used: False, hallucination_guard: "PASS", grounding: "DETERMINISTIC_EXACT" },
+        suggested_questions: WELCOME[user?.role ?? "nurse"].suggestions,
+        show_your_work: { evidence_used: [], reasoning_chain: [], knowledge_rules_applied: [], subsystem_agreement: "" },
+        evidence_replay_nodes: [],
+        context_stats: { facts_used: 0, knowledge_rules: 0, timeline_events: 0, lab_features: 0 },
+        engine_versions: { copilot: "2.0", reasoning: "", knowledge_base: "" },
+        safety: { llm_used: false, hallucination_guard: "N/A", grounding: "ROLE_SCOPED" },
       },
     },
   ]);
@@ -131,7 +133,7 @@ export function CopilotAssistantDrawer({
     try {
       const res = await axios.post(`${API_BASE}/copilot/query`, {
         query: queryText,
-        session_id: "SESSION-DRAWER",
+        session_id: `drawer-${intakeId ?? "none"}`,
         intake_id: intakeId,
         mode: mode,
       });
@@ -143,50 +145,34 @@ export function CopilotAssistantDrawer({
         timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
       };
       setMessages((prev) => [...prev, copilotMsg]);
-    } catch {
-      // Fallback response if offline
-      const fallbackMsg: MessageItem = {
-        id: `cop-${Date.now()}`,
-        sender: "copilot",
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-        response: {
-          answer_type: "EXPLAINABILITY_CARD",
-          answer_confidence: "HIGH",
-          answer: `[${mode} ASSISTANT] Answer regarding '${queryText}': Evaluated patient evidence cleanly. Medical Imaging Engine identified infiltrate and Laboratory Intelligence Engine confirmed elevated WBC.`,
-          evidence_card: {
-            condition: "Community-Acquired Pneumonia",
-            evidence_strength_pct: 88,
-            supporting: ["Medical Imaging Engine: Focal Consolidation", "CURB-65 Score = 2", "WBC = 14.2 (High)"],
-            conflicting: ["Normal D-Dimer"],
-            missing: ["Sputum Culture Result"],
-            confidence: "HIGH",
+    } catch (err: unknown) {
+      const status = (err as { response?: { status?: number } })?.response?.status;
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      const text =
+        status === 403
+          ? detail ?? "Your role is not allowed to use this feature."
+          : "The Copilot could not answer right now. Check that the backend is running and try again.";
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `cop-${Date.now()}`,
+          sender: "copilot",
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          response: {
+            answer_type: "NARRATIVE",
+            answer_confidence: "LOW",
+            answer: text,
+            sources: [],
+            citations: [],
+            suggested_questions: [],
+            show_your_work: { evidence_used: [], reasoning_chain: [], knowledge_rules_applied: [], subsystem_agreement: "" },
+            evidence_replay_nodes: [],
+            context_stats: { facts_used: 0, knowledge_rules: 0, timeline_events: 0, lab_features: 0 },
+            engine_versions: { copilot: "2.0", reasoning: "", knowledge_base: "" },
+            safety: { llm_used: false, hallucination_guard: "N/A", grounding: "NONE" },
           },
-          sources: ["Clinical Scoring Engine", "Medical Imaging Engine"],
-          citations: [{ source: "Medical Imaging Engine", section: "CXR Infiltrate", confidence: 0.88 }],
-          suggested_questions: ["Compare Pneumonia vs PE", "Show Pneumonia rules", "What changed since yesterday?"],
-          show_your_work: {
-            evidence_used: ["CXR infiltrate", "NEWS2 = 7", "WBC 14.2"],
-            reasoning_chain: [
-              "Layer 2: Laboratory Intelligence Engine marked WBC 14.2 as HIGH",
-              "Layer 3: Medical Imaging Engine identified infiltrate pattern",
-              "Layer 5: Clinical Scoring Engine calculated NEWS2 score",
-            ],
-            knowledge_rules_applied: ["pneumonia.yaml"],
-            subsystem_agreement: "CONCORDANT (94%)",
-          },
-          evidence_replay_nodes: [
-            { id: "intake", label: "Intake", status: "COMPLETE", data: "Male, 62y" },
-            { id: "vitals", label: "Vitals", status: "COMPLETE", data: "HR 114, SpO2 91%" },
-            { id: "scores", label: "NEWS2", status: "COMPLETE", data: "Score 7" },
-            { id: "imaging", label: "Imaging", status: "COMPLETE", data: "Infiltrate (88%)" },
-            { id: "conclusion", label: "Pneumonia", status: "VERIFIED", data: "88% Rank 1" },
-          ],
-          context_stats: { facts_used: 28, knowledge_rules: 2, timeline_events: 2, lab_features: 8 },
-          engine_versions: { copilot: "1.0", reasoning: "2.1", knowledge_base: "2.0" },
-          safety: { llm_used: True, hallucination_guard: "PASS", grounding: "STRICT" },
         },
-      };
-      setMessages((prev) => [...prev, fallbackMsg]);
+      ]);
     } finally {
       setLoading(false);
     }

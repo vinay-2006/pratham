@@ -140,20 +140,35 @@ class InvestigationRepository:
                 f"Failed to fetch investigations for intake {intake_id}: {exc}",
                 table=self.TABLE, operation="get_by_intake_id_with_columns",
             ) from exc
+    CHUNK_SIZE = 50
+
     def get_by_intake_ids(
         self, intake_ids: list[str], columns: str = "*"
     ) -> list[dict[str, Any]]:
-        """Batch-fetch investigations for multiple intakes."""
+        """Batch-fetch investigations for multiple intakes safely with chunking."""
         if not intake_ids:
             return []
         try:
-            result = (
-                supabase.table(self.TABLE)
-                .select(columns)
-                .in_("intake_id", intake_ids)
-                .execute()
-            )
-            return result.data or []
+            if len(intake_ids) <= self.CHUNK_SIZE:
+                result = (
+                    supabase.table(self.TABLE)
+                    .select(columns)
+                    .in_("intake_id", intake_ids)
+                    .execute()
+                )
+                return result.data or []
+            all_data: list[dict[str, Any]] = []
+            for i in range(0, len(intake_ids), self.CHUNK_SIZE):
+                chunk = intake_ids[i:i + self.CHUNK_SIZE]
+                result = (
+                    supabase.table(self.TABLE)
+                    .select(columns)
+                    .in_("intake_id", chunk)
+                    .execute()
+                )
+                if result.data:
+                    all_data.extend(result.data)
+            return all_data
         except Exception as exc:
             raise RepositoryError(
                 f"Failed to batch fetch investigations: {exc}",
@@ -167,14 +182,28 @@ class InvestigationRepository:
         if not intake_ids:
             return []
         try:
-            result = (
-                supabase.table(self.TABLE)
-                .select(columns)
-                .in_("intake_id", intake_ids)
-                .eq("status", status)
-                .execute()
-            )
-            return result.data or []
+            if len(intake_ids) <= self.CHUNK_SIZE:
+                result = (
+                    supabase.table(self.TABLE)
+                    .select(columns)
+                    .in_("intake_id", intake_ids)
+                    .eq("status", status)
+                    .execute()
+                )
+                return result.data or []
+            all_data: list[dict[str, Any]] = []
+            for i in range(0, len(intake_ids), self.CHUNK_SIZE):
+                chunk = intake_ids[i:i + self.CHUNK_SIZE]
+                result = (
+                    supabase.table(self.TABLE)
+                    .select(columns)
+                    .in_("intake_id", chunk)
+                    .eq("status", status)
+                    .execute()
+                )
+                if result.data:
+                    all_data.extend(result.data)
+            return all_data
         except Exception as exc:
             raise RepositoryError(
                 f"Failed to batch fetch investigations by status: {exc}",

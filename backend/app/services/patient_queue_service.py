@@ -180,7 +180,11 @@ async def get_queue_items() -> List[Dict[str, Any]]:
 
     def _batch_pipeline() -> Dict[str, Dict]:
         from app.services.pipeline_status_service import get_batch_pipeline_status
-        return get_batch_pipeline_status(intake_ids)
+        try:
+            return get_batch_pipeline_status(intake_ids)
+        except Exception:
+            logger.warning("[Queue] Pipeline status batch fetch retry after transient error")
+            return get_batch_pipeline_status(intake_ids)
 
     def _batch_workflow_status() -> Dict[str, str]:
         try:

@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { Brain, Network, GitCommit, CheckCircle2, AlertCircle, HelpCircle } from "lucide-react";
 
-const API_BASE = "http://localhost:8000/api";
+import { API_BASE } from "@/lib/api-config";
 
 interface EvidenceTreeData {
   intake_id: string;

@@ -20,6 +20,7 @@ export const Route = createFileRoute("/_app/imaging")({
 
 function ImagingPage() {
   const { patientCase } = useCase();
+  const [showHeatmap, setShowHeatmap] = useState(true);
 
   if (!patientCase) {
     return (
@@ -31,7 +32,6 @@ function ImagingPage() {
     );
   }
 
-  const [showHeatmap, setShowHeatmap] = useState(true);
   const { imaging } = patientCase;
   const prob = Math.round(imaging.pneumoniaProbability * 100);
 

@@ -1,91 +1,331 @@
 """
-Workflow Service — Single source of truth for patient workflow status and timeline.
-
-Every consumer (queue, patient detail, dashboard, future mobile) calls these
-functions instead of computing workflow logic inline.
-
-Workflow States:
-    doctor_review_required  →  evidence_collection  →  ai_processing  →  report_ready
-                            →  no_approved (edge case: all rejected)
+Workflow Service — Single source of truth for patient workflow status, timeline, and transitions.
 """
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
-from app.db.supabase_client import supabase
+from app.domains.triage.repository import intake_repository
+from app.domains.shared.enums import WorkflowStatus
+from app.domains.workflow.repository import workflow_repository
+from app.domains.pipeline.repository import pipeline_repository
+from app.domains.ai.repository import aggregation_results_repository
+from app.domains.evidence.repository import evidence_repository
+from app.domains.investigation.repository import investigation_repository
 
 logger = logging.getLogger(__name__)
 
-
-# ── Workflow Status ──────────────────────────────────────────────────────────
-
-WORKFLOW_LABELS: Dict[str, str] = {
-    "doctor_review_required": "Doctor Review Required",
-    "evidence_collection":    "Awaiting Evidence Upload",
-    "ai_processing":          "AI Analysis Running",
-    "report_ready":           "Clinical Report Ready",
-    "no_approved":            "No Approved Investigations",
+# Human-readable labels matching WorkflowStatus values
+WORKFLOW_LABELS: Dict[WorkflowStatus, str] = {
+    WorkflowStatus.INTAKE_SUBMITTED: "Intake Submitted",
+    WorkflowStatus.EN_ROUTE: "En Route",
+    WorkflowStatus.ARRIVED: "Arrived",
+    WorkflowStatus.AWAITING_APPROVAL: "Awaiting Doctor Approval",
+    WorkflowStatus.APPROVED: "Investigations Approved",
+    WorkflowStatus.UPLOAD_PENDING: "Evidence Upload Pending",
+    WorkflowStatus.ANALYSIS_RUNNING: "Analysis Running",
+    WorkflowStatus.REPORT_READY: "Clinical Report Ready",
+    WorkflowStatus.UNDER_REVIEW: "Under Doctor Review",
+    WorkflowStatus.CLOSED: "Case Closed",
+    WorkflowStatus.OFFLINE: "Offline Care",
 }
 
+# ── State Machine Validation Rules ──────────────────────────────────────────
+# Define permitted next states from each starting state.
+VALID_TRANSITIONS: Dict[WorkflowStatus, List[WorkflowStatus]] = {
+    WorkflowStatus.INTAKE_SUBMITTED: [
+        WorkflowStatus.EN_ROUTE,
+        WorkflowStatus.ARRIVED,
+        WorkflowStatus.AWAITING_APPROVAL,
+        WorkflowStatus.OFFLINE,
+    ],
+    WorkflowStatus.EN_ROUTE: [
+        WorkflowStatus.ARRIVED,
+        WorkflowStatus.OFFLINE,
+    ],
+    WorkflowStatus.ARRIVED: [
+        WorkflowStatus.AWAITING_APPROVAL,
+        WorkflowStatus.OFFLINE,
+    ],
+    WorkflowStatus.AWAITING_APPROVAL: [
+        WorkflowStatus.ARRIVED,
+        WorkflowStatus.APPROVED,
+        WorkflowStatus.UPLOAD_PENDING,  # P1 — enables return_to_nurse (doctor sends case back to nurse)
+        WorkflowStatus.CLOSED,
+        WorkflowStatus.OFFLINE,
+    ],
+    WorkflowStatus.APPROVED: [
+        WorkflowStatus.UPLOAD_PENDING,
+        WorkflowStatus.ANALYSIS_RUNNING,  # Allow direct bypass if no files needed
+        WorkflowStatus.REPORT_READY,
+        WorkflowStatus.OFFLINE,
+    ],
+    WorkflowStatus.UPLOAD_PENDING: [
+        WorkflowStatus.ANALYSIS_RUNNING,
+        WorkflowStatus.OFFLINE,
+    ],
+    WorkflowStatus.ANALYSIS_RUNNING: [
+        WorkflowStatus.REPORT_READY,
+        WorkflowStatus.OFFLINE,
+    ],
+    WorkflowStatus.REPORT_READY: [
+        WorkflowStatus.UNDER_REVIEW,
+        WorkflowStatus.CLOSED,
+        WorkflowStatus.OFFLINE,
+    ],
+    WorkflowStatus.UNDER_REVIEW: [
+        WorkflowStatus.CLOSED,
+        WorkflowStatus.OFFLINE,
+    ],
+    WorkflowStatus.CLOSED: [],
+    WorkflowStatus.OFFLINE: [],
+}
 
-def compute_workflow_status(
-    inv_counts: Dict[str, int],
-    evidence: Dict[str, int],
-    pipeline_status: Dict[str, str],
-) -> str:
+def validate_status_transition(current_status: str, new_status: str) -> bool:
     """
-    Compute human-readable workflow status from investigation counts,
-    evidence completeness, and pipeline stage statuses.
-
-    Parameters:
-        inv_counts: {"approved": N, "pending_approval": N, "rejected": N, "total": N, ...}
-        evidence:   {"uploaded": N, "required": N}
-        pipeline_status: {"nlp": "completed", "risk": "completed", "lab": "pending", ...}
-
-    Returns one of:
-        "doctor_review_required"
-        "evidence_collection"
-        "ai_processing"
-        "report_ready"
-        "no_approved"
+    Validate if transition from current_status to new_status is permitted.
     """
-    total = inv_counts.get("total", 0)
-    approved = inv_counts.get("approved", 0)
-    pending = inv_counts.get("pending_approval", 0)
+    try:
+        curr = WorkflowStatus(current_status)
+        nxt = WorkflowStatus(new_status)
+    except ValueError:
+        return False
 
-    # No investigations yet, or some still pending doctor decision
-    if approved == 0:
-        if total == 0 or pending > 0:
-            return "doctor_review_required"
-        # All rejected / needs_info, none approved
-        return "no_approved"
+    # Standard loopbacks/self-transitions are always allowed
+    if curr == nxt:
+        return True
 
-    # Approved investigations exist — check evidence
-    uploaded = evidence.get("uploaded", 0)
-    required = evidence.get("required", 0)
-    if required > 0 and uploaded < required:
-        return "evidence_collection"
+    # Check state machine transitions list
+    allowed = VALID_TRANSITIONS.get(curr, [])
+    return nxt in allowed
 
-    # Evidence complete — check pipeline
-    agg_status = pipeline_status.get("aggregation", "pending")
-    if agg_status == "completed":
-        return "report_ready"
+# ── Log Status Transition ───────────────────────────────────────────────────
 
-    # Pipeline still in progress
-    return "ai_processing"
+def log_status_transition(
+    intake_id: str,
+    old_status: Optional[str],
+    new_status: str,
+    actor_type: str,
+    actor_name: str,
+    reason: Optional[str] = None,
+) -> None:
+    """
+    Insert a status transition audit log into public.workflow_logs.
+    Delegates to WorkflowRepository (R1.1 — sole persistence owner).
+    """
+    try:
+        workflow_repository.log_transition(
+            intake_id=intake_id,
+            old_status=old_status,
+            new_status=new_status,
+            actor_type=actor_type,
+            actor_name=actor_name,
+            reason=reason,
+        )
+        logger.info(
+            "[PRATHAM/WORKFLOW] Status log inserted: %s -> %s for intake %s",
+            old_status, new_status, intake_id
+        )
+    except Exception as exc:
+        logger.error(
+            "[PRATHAM/WORKFLOW] Failed to write status transition log: %s", exc
+        )
 
+# ── Update Workflow Status ──────────────────────────────────────────────────
+
+def to_db_status(status: str) -> str:
+    """
+    Map the standardized 11-status values to legacy statuses allowed by the database CHECK constraint.
+    """
+    mapping = {
+        "intake_submitted": "intake_pending",
+        "en_route": "intake_pending",
+        "arrived": "intake_pending",
+        "awaiting_doctor_approval": "intake_pending",
+        "investigations_approved": "investigation_approved",
+        "evidence_upload_pending": "evidence_upload_pending",
+        "analysis_running": "evidence_upload_pending",
+        "clinical_report_ready": "clinical_report_ready",
+        "under_doctor_review": "clinical_report_ready",
+        "case_closed": "case_closed",
+        "offline_care": "case_closed",
+        "needs_info": "needs_info",
+    }
+    return mapping.get(status, status)
+
+
+def get_workflow_status(intake_id: str, default_status: str) -> str:
+    """
+    Query the latest true standardized status from workflow_logs.
+    Delegates to WorkflowRepository (R1.1 — sole persistence owner).
+    """
+    try:
+        status = workflow_repository.get_latest_status(intake_id)
+        if status is not None:
+            return status
+    except Exception:
+        pass
+    return default_status
+
+
+def resolve_intakes_status(intakes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Batch resolve the true status for a list of intakes using workflow_logs.
+    Delegates to WorkflowRepository (R1.1 — sole persistence owner).
+    """
+    if not intakes:
+        return intakes
+    intake_ids = [r["id"] for r in intakes if "id" in r]
+    if not intake_ids:
+        return intakes
+    try:
+        latest_status = workflow_repository.get_batch_latest_status(intake_ids)
+        for r in intakes:
+            if "id" in r:
+                r["status"] = latest_status.get(r["id"], r.get("status"))
+    except Exception:
+        pass
+    return intakes
+
+
+# ── Update Workflow Status ──────────────────────────────────────────────────
+
+def update_workflow_status(
+    intake_id: str,
+    new_status: str,
+    actor_type: str,
+    actor_name: str,
+    reason: Optional[str] = None,
+) -> bool:
+    """
+    Transition a patient's state in public.emergency_intake.
+    Performs state machine validation, updates the database, and creates an audit log entry.
+    """
+    try:
+        # Fetch current status
+        intake_row = intake_repository.get_by_id(intake_id, columns="status")
+
+        if not intake_row:
+            logger.error("[PRATHAM/WORKFLOW] Intake %s not found for status update", intake_id)
+            return False
+
+        old_status = get_workflow_status(intake_id, intake_row.get("status"))
+
+        # Validate transition rules
+        if old_status and not validate_status_transition(old_status, new_status):
+            logger.warning(
+                "[PRATHAM/WORKFLOW] Invalid status transition rejected: %s -> %s for intake %s",
+                old_status, new_status, intake_id
+            )
+            return False
+
+        # Apply update
+        intake_repository.update_status(intake_id, to_db_status(new_status))
+
+        # Log transition
+        log_status_transition(
+            intake_id=intake_id,
+            old_status=old_status,
+            new_status=new_status,
+            actor_type=actor_type,
+            actor_name=actor_name,
+            reason=reason,
+        )
+        return True
+
+    except Exception as exc:
+        logger.error("[PRATHAM/WORKFLOW] Error updating status: %s", exc)
+        return False
+
+# ── Server-Owned ETA & Expiration Check ─────────────────────────────────────
+
+def check_and_update_patient_lifecycle(intake: Dict[str, Any]) -> str:
+    """
+    Determines and updates (if expired or arrived) the status of a patient dynamically.
+    Returns the corrected status.
+    """
+    intake_id = intake["id"]
+    status = intake.get("status", "intake_submitted")
+    created_at_str = intake.get("created_at")
+
+    if not created_at_str:
+        return status
+
+    try:
+        # Convert created_at format YYYY-MM-DDTHH:MM:SS... to datetime object
+        # Handles various timezone formats cleanly
+        created_at_val = created_at_str.replace("Z", "+00:00")
+        created_at = datetime.fromisoformat(created_at_val)
+    except Exception:
+        return status
+
+    now = datetime.now(timezone.utc)
+    elapsed_time = now - created_at
+
+    # 1. 48-Hour Cleanup (Offline Care)
+    # Only transition Pending/Active categories to Offline Care.
+    # Exclude report_ready, under_doctor_review, and case_closed.
+    active_statuses = {
+        WorkflowStatus.INTAKE_SUBMITTED.value,
+        WorkflowStatus.EN_ROUTE.value,
+        WorkflowStatus.ARRIVED.value,
+        WorkflowStatus.AWAITING_APPROVAL.value,
+        WorkflowStatus.APPROVED.value,
+        WorkflowStatus.UPLOAD_PENDING.value,
+        WorkflowStatus.ANALYSIS_RUNNING.value,
+    }
+
+    if elapsed_time > timedelta(hours=48) and status in active_statuses:
+        # Transition to Offline Care
+        success = update_workflow_status(
+            intake_id=intake_id,
+            new_status=WorkflowStatus.OFFLINE.value,
+            actor_type="System",
+            actor_name="Automated Cleanup Engine",
+            reason="Active triage window exceeded 48 hours."
+        )
+        if success:
+            return WorkflowStatus.OFFLINE.value
+
+    # 2. Server-Owned Ambulance ETA Arrival Check
+    eta_mins = intake.get("ambulance_eta")
+    if status == WorkflowStatus.EN_ROUTE.value and eta_mins is not None:
+        arrival_time = created_at + timedelta(minutes=eta_mins)
+        if now >= arrival_time:
+            # Auto-arrive
+            success = update_workflow_status(
+                intake_id=intake_id,
+                new_status=WorkflowStatus.ARRIVED.value,
+                actor_type="System",
+                actor_name="Automated ETA Engine",
+                reason="Estimated arrival time elapsed."
+            )
+            if success:
+                # Instantly chain Arrived -> Awaiting Doctor Approval as well!
+                update_workflow_status(
+                    intake_id=intake_id,
+                    new_status=WorkflowStatus.AWAITING_APPROVAL.value,
+                    actor_type="System",
+                    actor_name="Triage Pipeline",
+                    reason="Patient checked in for clinical triage."
+                )
+                return WorkflowStatus.AWAITING_APPROVAL.value
+
+    return status
 
 def get_workflow_label(status: str) -> str:
     """Return the human-readable label for a workflow status."""
-    return WORKFLOW_LABELS.get(status, status)
-
+    try:
+        val = WorkflowStatus(status)
+        return WORKFLOW_LABELS.get(val, status)
+    except ValueError:
+        return status
 
 # ── Patient Timeline ────────────────────────────────────────────────────────
 
-# Icon names match lucide-react icon components
 EVENT_ICONS: Dict[str, str] = {
     "intake":      "ambulance",
     "investigate":  "clipboard-list",
@@ -109,64 +349,37 @@ STAGE_LABELS: Dict[str, str] = {
     "aggregation": "Aggregation",
 }
 
-
 def build_patient_timeline(intake_id: str) -> List[Dict[str, Any]]:
     """
     Reconstruct patient journey from existing database timestamps.
-
-    Reads from:
-      - emergency_intake.created_at
-      - investigation_recommendations.created_at, approved_at, rejected_at
-      - evidence.uploaded_at, evidence_type, file_name
-      - pipeline_status.started_at, completed_at, status, duration_ms
-      - aggregation_results.created_at
-
-    Returns a sorted list of timeline events (newest last):
-    [
-        {
-            "event": "Patient Arrived",
-            "timestamp": "2026-07-04T09:31:00Z",
-            "icon": "ambulance",
-            "type": "intake",
-            "detail": null
-        },
-        ...
-    ]
     """
     events: List[Dict[str, Any]] = []
 
     try:
         # 1. Intake creation
-        intake_res = (
-            supabase.table("emergency_intake")
-            .select("created_at, chief_complaint")
-            .eq("id", intake_id)
-            .limit(1)
-            .execute()
+        intake_row = intake_repository.get_by_id(
+            intake_id,
+            columns="created_at, chief_complaint, arrival_type, case_id",
         )
-        if intake_res.data:
-            row = intake_res.data[0]
+        if intake_row:
+            row = intake_row
             cc = row.get("chief_complaint", "")
-            detail = f"Chief complaint: {cc}" if cc else None
+            arr = (row.get("arrival_type") or "walk_in").replace("_", " ").title()
+            cid = row.get("case_id", "PRA-Case")
             events.append({
-                "event": "Patient Arrived",
+                "event": "Intake Submitted",
                 "timestamp": row.get("created_at"),
                 "icon": EVENT_ICONS["intake"],
                 "type": "intake",
-                "detail": detail,
+                "detail": f"Registered via {arr}. Case: {cid}",
             })
 
         # 2. Investigation recommendations
-        inv_res = (
-            supabase.table("investigation_recommendations")
-            .select("investigation_type, status, created_at, approved_at, rejected_at")
-            .eq("intake_id", intake_id)
-            .order("created_at")
-            .execute()
+        inv_rows = investigation_repository.get_by_intake_id_with_columns(
+            intake_id,
+            columns="investigation_type, status, created_at, approved_at, rejected_at",
         )
-        inv_rows = inv_res.data or []
 
-        # Group creation by timestamp (they're usually created together)
         if inv_rows:
             first_created = inv_rows[0].get("created_at")
             inv_types = [r.get("investigation_type", "") for r in inv_rows]
@@ -178,15 +391,11 @@ def build_patient_timeline(intake_id: str) -> List[Dict[str, Any]]:
                 "detail": ", ".join(inv_types) if inv_types else None,
             })
 
-        # Approval / rejection events
         approved_list = [r for r in inv_rows if r.get("approved_at")]
         rejected_list = [r for r in inv_rows if r.get("rejected_at")]
 
         if approved_list:
-            # Use earliest approval time
-            earliest_approval = min(
-                r["approved_at"] for r in approved_list if r.get("approved_at")
-            )
+            earliest_approval = min(r["approved_at"] for r in approved_list if r.get("approved_at"))
             events.append({
                 "event": f"Doctor Approved {len(approved_list)} Investigation(s)",
                 "timestamp": earliest_approval,
@@ -196,9 +405,7 @@ def build_patient_timeline(intake_id: str) -> List[Dict[str, Any]]:
             })
 
         if rejected_list:
-            earliest_rejection = min(
-                r["rejected_at"] for r in rejected_list if r.get("rejected_at")
-            )
+            earliest_rejection = min(r["rejected_at"] for r in rejected_list if r.get("rejected_at"))
             events.append({
                 "event": f"Doctor Rejected {len(rejected_list)} Investigation(s)",
                 "timestamp": earliest_rejection,
@@ -209,14 +416,13 @@ def build_patient_timeline(intake_id: str) -> List[Dict[str, Any]]:
 
         # 3. Evidence uploads
         try:
-            ev_res = (
-                supabase.table("evidence")
-                .select("evidence_type, file_name, uploaded_at")
-                .eq("intake_id", intake_id)
-                .order("uploaded_at")
-                .execute()
+            ev_rows = evidence_repository.get_by_intake_id_with_columns(
+                intake_id,
+                columns="evidence_type, file_name, uploaded_at",
+                order_by="uploaded_at",
+                desc=False,
             )
-            for ev in (ev_res.data or []):
+            for ev in ev_rows:
                 ev_type = (ev.get("evidence_type") or "file").replace("_", " ").title()
                 fname = ev.get("file_name", "")
                 events.append({
@@ -227,27 +433,17 @@ def build_patient_timeline(intake_id: str) -> List[Dict[str, Any]]:
                     "detail": fname if fname else None,
                 })
         except Exception:
-            pass  # evidence table may have schema variations
+            pass
 
         # 4. Pipeline status events
         try:
-            ps_res = (
-                supabase.table("pipeline_status")
-                .select("stage, status, started_at, completed_at, duration_ms, error_message")
-                .eq("intake_id", intake_id)
-                .execute()
-            )
-            for ps in (ps_res.data or []):
+            ps_rows = pipeline_repository.get_by_intake_id(intake_id)
+            for ps in ps_rows:
                 stage = ps.get("stage", "")
                 label = STAGE_LABELS.get(stage, stage.title())
                 status = ps.get("status", "")
                 duration = ps.get("duration_ms")
-                duration_str = ""
-                if duration is not None:
-                    if duration < 1000:
-                        duration_str = f" ({duration}ms)"
-                    else:
-                        duration_str = f" ({duration / 1000:.1f}s)"
+                duration_str = f" ({duration / 1000:.1f}s)" if duration else ""
 
                 if status == "completed" and ps.get("completed_at"):
                     events.append({
@@ -267,22 +463,15 @@ def build_patient_timeline(intake_id: str) -> List[Dict[str, Any]]:
                         "detail": error[:100] if error else None,
                     })
         except Exception:
-            pass  # pipeline_status table may not exist
+            pass
 
         # 5. Aggregation result (report generated)
         try:
-            agg_res = (
-                supabase.table("aggregation_results")
-                .select("created_at")
-                .eq("intake_id", intake_id)
-                .order("created_at", desc=True)
-                .limit(1)
-                .execute()
-            )
-            if agg_res.data:
+            agg_row = aggregation_results_repository.get_latest(intake_id, columns="created_at")
+            if agg_row:
                 events.append({
                     "event": "Clinical Report Generated",
-                    "timestamp": agg_res.data[0].get("created_at"),
+                    "timestamp": agg_row.get("created_at"),
                     "icon": EVENT_ICONS["report"],
                     "type": "report",
                     "detail": None,
@@ -295,5 +484,41 @@ def build_patient_timeline(intake_id: str) -> List[Dict[str, Any]]:
 
     # Sort by timestamp (oldest first)
     events.sort(key=lambda e: e.get("timestamp") or "")
-
     return events
+
+
+def update_status_on_evidence_upload(intake_id: str, actor_name: str = "Nurse") -> None:
+    """
+    Checks the count of approved investigations vs uploaded evidence
+    and transitions the patient's workflow status automatically.
+    """
+    try:
+        # Fetch approved investigations
+        approved_count = investigation_repository.count_by_intake_and_status(intake_id, "approved")
+
+        # Fetch evidence files
+        uploaded_count = evidence_repository.count_by_intake_id(intake_id)
+
+        # Fetch current status
+        intake_row = intake_repository.get_by_id(intake_id, columns="status")
+
+        if intake_row:
+            curr_status = intake_row.get("status")
+            
+            # Determine target status
+            if approved_count > 0 and uploaded_count >= approved_count:
+                target_status = WorkflowStatus.ANALYSIS_RUNNING.value
+            else:
+                target_status = WorkflowStatus.UPLOAD_PENDING.value
+
+            if curr_status != target_status:
+                update_workflow_status(
+                    intake_id=intake_id,
+                    new_status=target_status,
+                    actor_type="Nurse",
+                    actor_name=actor_name,
+                    reason="Evidence uploaded"
+                )
+    except Exception as exc:
+        logger.error("[PRATHAM/WORKFLOW] update_status_on_evidence_upload failed: %s", exc)
+

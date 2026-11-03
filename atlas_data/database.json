@@ -1,0 +1,34 @@
+{
+  "tables": [
+    {
+      "name": "if",
+      "migration_file": "004_lab_results_schema.sql",
+      "columns": []
+    },
+    {
+      "name": "lab_results",
+      "migration_file": "004_lab_results_schema.sql",
+      "columns": []
+    },
+    {
+      "name": "imaging_results",
+      "migration_file": "005_imaging_results_schema.sql",
+      "columns": []
+    },
+    {
+      "name": "aggregation_results",
+      "migration_file": "006_aggregation_results_schema.sql",
+      "columns": []
+    },
+    {
+      "name": "in",
+      "migration_file": "006b_add_aggregation_columns.sql",
+      "columns": []
+    },
+    {
+      "name": "pipeline_status",
+      "migration_file": "007_pipeline_status.sql",
+      "columns": []
+    }
+  ]
+}

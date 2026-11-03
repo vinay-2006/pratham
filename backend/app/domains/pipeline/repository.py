@@ -94,18 +94,33 @@ class PipelineRepository:
                 table=self.TABLE, operation="update_stage",
             ) from exc
 
+    CHUNK_SIZE = 50
+
     def get_batch_status(self, intake_ids: list[str]) -> list[dict[str, Any]]:
-        """Fetch pipeline status for multiple intakes in a single query."""
+        """Fetch pipeline status for multiple intakes safely with chunking."""
         if not intake_ids:
             return []
         try:
-            result = (
-                supabase.table(self.TABLE)
-                .select("intake_id, stage, status, started_at, completed_at, duration_ms, error_message")
-                .in_("intake_id", intake_ids)
-                .execute()
-            )
-            return result.data or []
+            if len(intake_ids) <= self.CHUNK_SIZE:
+                result = (
+                    supabase.table(self.TABLE)
+                    .select("intake_id, stage, status, started_at, completed_at, duration_ms, error_message")
+                    .in_("intake_id", intake_ids)
+                    .execute()
+                )
+                return result.data or []
+            all_data: list[dict[str, Any]] = []
+            for i in range(0, len(intake_ids), self.CHUNK_SIZE):
+                chunk = intake_ids[i:i + self.CHUNK_SIZE]
+                result = (
+                    supabase.table(self.TABLE)
+                    .select("intake_id, stage, status, started_at, completed_at, duration_ms, error_message")
+                    .in_("intake_id", chunk)
+                    .execute()
+                )
+                if result.data:
+                    all_data.extend(result.data)
+            return all_data
         except Exception as exc:
             raise RepositoryError(
                 f"Failed to batch fetch pipeline status: {exc}",

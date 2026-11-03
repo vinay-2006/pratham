@@ -12,7 +12,8 @@ import logging
 import time
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException
+from app.core.auth import AuthUser, get_current_user
+from fastapi import Depends, APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.domains.triage.repository import intake_repository
@@ -188,7 +189,7 @@ async def get_investigation_history(status: str = None):
 
 
 @router.post("/investigations/approve", response_model=ApprovalResponse, tags=["Investigations"])
-async def approve_investigations(data: ApprovalRequest) -> ApprovalResponse:
+async def approve_investigations(data: ApprovalRequest, user: AuthUser = Depends(get_current_user)) -> ApprovalResponse:
     """
     Doctor approves selected investigations for a patient intake.
     Unselected pending tests are auto-rejected.
@@ -200,7 +201,7 @@ async def approve_investigations(data: ApprovalRequest) -> ApprovalResponse:
             intake_id=data.intake_id,
             approved_tests=data.approved_tests,
             custom_tests=data.custom_tests or [],
-            doctor_name=data.doctor_name or "Unknown Doctor",
+            doctor_name=user.name,
             doctor_notes=data.doctor_notes,
         )
         return ApprovalResponse(
@@ -216,7 +217,7 @@ async def approve_investigations(data: ApprovalRequest) -> ApprovalResponse:
 # ── POST reject ──────────────────────────────────────────────────────────────
 
 @router.post("/investigations/reject", tags=["Investigations"])
-async def reject_investigations(data: RejectRequest):
+async def reject_investigations(data: RejectRequest, user: AuthUser = Depends(get_current_user)):
     """
     Doctor rejects recommended investigations.
     """
@@ -224,7 +225,7 @@ async def reject_investigations(data: RejectRequest):
         return _reject_service(
             intake_id=data.intake_id,
             doctor_notes=data.doctor_notes,
-            doctor_name=data.doctor_name or "Doctor",
+            doctor_name=user.name,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -371,10 +372,47 @@ async def get_patient_detail(intake_id: str):
         import asyncio
 
         def _fetch_inv():
-            return investigation_repository.get_by_intake_id_with_columns(
-                intake_id,
-                columns="id, investigation_type, status, approved_at, rejected_at, review_notes, created_at",
-            )
+            def _is_transient(exc: Exception) -> bool:
+                transient_keywords = (
+                    "server disconnected",
+                    "connectionterminated",
+                    "connection reset",
+                    "connection aborted",
+                    "remote protocol error",
+                    "connection refused",
+                    "broken pipe",
+                    "timed out",
+                    "timeout",
+                )
+                curr: Optional[BaseException] = exc
+                while curr is not None:
+                    if isinstance(curr, (ConnectionError, TimeoutError, OSError)):
+                        return True
+                    name = type(curr).__name__.lower()
+                    if "protocolerror" in name or "transporterror" in name or "timeouterror" in name:
+                        return True
+                    msg = str(curr).lower()
+                    if any(kw in msg for kw in transient_keywords):
+                        return True
+                    curr = curr.__cause__ or curr.__context__
+                return False
+
+            try:
+                return investigation_repository.get_by_intake_id_with_columns(
+                    intake_id,
+                    columns="id, investigation_type, status, approved_at, rejected_at, review_notes, created_at",
+                )
+            except Exception as exc:
+                if not _is_transient(exc):
+                    raise
+                logger.warning(
+                    "[Investigations] Retrying investigation fetch for intake %s after transient error: %s",
+                    intake_id, exc,
+                )
+                return investigation_repository.get_by_intake_id_with_columns(
+                    intake_id,
+                    columns="id, investigation_type, status, approved_at, rejected_at, review_notes, created_at",
+                )
 
         def _fetch_ev():
             try:
@@ -739,17 +777,17 @@ async def add_investigation(data: AddInvestigationRequest):
 
 class ArrivalConfirmRequest(BaseModel):
     intake_id: str
-    actor_name: str
+    actor_name: Optional[str] = None  # ignored: the signed-in user is recorded
 
 @router.post("/intake/arrival/confirm", tags=["Intake"])
-async def confirm_arrival(data: ArrivalConfirmRequest):
+async def confirm_arrival(data: ArrivalConfirmRequest, user: AuthUser = Depends(get_current_user)):
     """
     Manually confirm the arrival of a patient.
     Transitions their state: (Current) -> Arrived -> Awaiting Doctor Approval.
     """
     success = _confirm_arrival_service(
         intake_id=data.intake_id,
-        actor_name=data.actor_name,
+        actor_name=user.name,
     )
     if not success:
         raise HTTPException(status_code=400, detail="Invalid status transition to Arrived")
@@ -785,18 +823,18 @@ async def get_registry():
 # ── POST Close Case ───────────────────────────────────────────────────────────
 
 class CloseCaseRequest(BaseModel):
-    actor_name: str
+    actor_name: Optional[str] = None
     reason: Optional[str] = "Doctor marked case as closed."
 
 @router.post("/intake/{intake_id}/close", tags=["Intake"])
-async def close_case(intake_id: str, data: CloseCaseRequest):
+async def close_case(intake_id: str, data: CloseCaseRequest, user: AuthUser = Depends(get_current_user)):
     """
     Manually close a patient case from the Doctor report page.
     """
     try:
         success = _close_case_service(
             intake_id=intake_id,
-            actor_name=data.actor_name,
+            actor_name=user.name,
             reason=data.reason or "Doctor marked case as closed.",
         )
         if not success:
@@ -858,11 +896,11 @@ async def get_doctor_reports_list():
 
 class ReturnToNurseRequest(BaseModel):
     intake_id: str
-    actor_name: str
+    actor_name: Optional[str] = None
     reason: str
 
 @router.post("/investigations/return-to-nurse", tags=["Doctor"])
-async def return_to_nurse(data: ReturnToNurseRequest):
+async def return_to_nurse(data: ReturnToNurseRequest, user: AuthUser = Depends(get_current_user)):
     """
     Return the case to the Nurse for re-upload or details correction.
     Transitions workflow status: Awaiting Doctor Approval -> Evidence Upload Pending.
@@ -870,7 +908,7 @@ async def return_to_nurse(data: ReturnToNurseRequest):
     try:
         success = _return_to_nurse_service(
             intake_id=data.intake_id,
-            actor_name=data.actor_name,
+            actor_name=user.name,
             reason=data.reason,
         )
         if not success:
@@ -887,10 +925,10 @@ async def return_to_nurse(data: ReturnToNurseRequest):
 class RecommendRequest(BaseModel):
     intake_id: str
     investigation_type: str
-    doctor_name: str
+    doctor_name: Optional[str] = None
 
 @router.post("/investigations/recommend", tags=["Doctor"])
-async def recommend_investigation(data: RecommendRequest):
+async def recommend_investigation(data: RecommendRequest, user: AuthUser = Depends(get_current_user)):
     """
     Doctor recommends and auto-approves a new custom investigation test.
     Updates status to Approved and logs.
@@ -899,7 +937,7 @@ async def recommend_investigation(data: RecommendRequest):
         return _recommend_investigation_service(
             intake_id=data.intake_id,
             investigation_type=data.investigation_type,
-            doctor_name=data.doctor_name,
+            doctor_name=user.name,
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))

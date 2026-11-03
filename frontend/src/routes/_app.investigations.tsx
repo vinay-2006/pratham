@@ -37,6 +37,7 @@ const STATUS_META: Record<
 
 function InvestigationsPage() {
   const { patientCase } = useCase();
+  const [list, setList] = useState(patientCase?.recommendedInvestigations ?? []);
 
   if (!patientCase) {
     return (
@@ -47,8 +48,6 @@ function InvestigationsPage() {
       </div>
     );
   }
-
-  const [list, setList] = useState(patientCase.recommendedInvestigations);
 
   if (list[0]?.name !== patientCase.recommendedInvestigations[0]?.name) {
     setList(patientCase.recommendedInvestigations);

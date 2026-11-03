@@ -6,7 +6,7 @@ import { useState } from "react";
 import axios from "axios";
 import { Search, Filter, FileText, ChevronRight, User } from "lucide-react";
 
-const API_BASE = "http://localhost:8000/api";
+import { API_BASE } from "@/lib/api-config";
 
 interface SearchResult {
   intake_id: string;

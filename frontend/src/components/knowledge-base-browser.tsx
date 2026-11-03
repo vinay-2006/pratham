@@ -155,7 +155,7 @@ export function KnowledgeBaseBrowser() {
       </div>
 
       {/* Main Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-[300px_1fr] gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-[300px_minmax(0,1fr)] gap-6">
         {/* Sidebar Rule Selection List */}
         <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-card p-3 shadow-sm space-y-1 max-h-[600px] overflow-y-auto">
           <p className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">Select Emergency Condition</p>

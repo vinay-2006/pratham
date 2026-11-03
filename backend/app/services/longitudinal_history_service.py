@@ -7,7 +7,8 @@ Aggregates multi-visit patient records from Supabase and performs trajectory ana
 from __future__ import annotations
 import logging
 from typing import Any, Dict, List
-from app.db.supabase_client import supabase
+from app.domains.triage.repository import intake_repository, vitals_repository
+from app.domains.ai.repository import risk_scores_repository
 from app.services.trend_analysis_service import analyze_longitudinal_trends
 
 logger = logging.getLogger(__name__)
@@ -18,14 +19,11 @@ async def get_patient_longitudinal_history(patient_id: str) -> Dict[str, Any]:
     Fetches all historical visits, vitals, risk scores, and trend trajectories for a given patient_id.
     """
     try:
-        intake_res = (
-            supabase.table("emergency_intake")
-            .select("id, status, created_at, severity_level, chief_complaint, emergency_description")
-            .eq("patient_id", patient_id)
-            .order("created_at", asc=True)
-            .execute()
+        visits = intake_repository.get_by_patient_id(
+            patient_id,
+            columns="id, status, created_at, severity_level, chief_complaint, emergency_description",
+            order_asc=True,
         )
-        visits = intake_res.data or []
     except Exception as exc:
         logger.warning("[Longitudinal Engine] Failed to fetch intakes: %s", exc)
         visits = []
@@ -34,11 +32,8 @@ async def get_patient_longitudinal_history(patient_id: str) -> Dict[str, Any]:
 
     for v in visits:
         iid = v["id"]
-        vitals_res = supabase.table("vitals").select("*").eq("intake_id", iid).limit(1).execute()
-        risk_res = supabase.table("risk_scores").select("*").eq("intake_id", iid).limit(1).execute()
-
-        vitals_row = vitals_res.data[0] if vitals_res.data else {}
-        risk_row = risk_res.data[0] if risk_res.data else {}
+        vitals_row = vitals_repository.get_by_intake_id(iid) or {}
+        risk_row = risk_scores_repository.get_by_intake_id(iid) or {}
 
         visit_details.append({
             "intake_id": iid,

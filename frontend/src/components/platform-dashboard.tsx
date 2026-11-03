@@ -6,6 +6,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { BarChart3, PieChart, TrendingUp, Cpu, RefreshCw, BarChart2 } from "lucide-react";
+import { API_BASE } from "@/lib/api-config";
 
 interface TelemetryData {
   codebase_stats: {
@@ -41,7 +42,7 @@ export function PlatformDashboard() {
   useEffect(() => {
     async function fetchTelemetry() {
       try {
-        const res = await axios.get("http://localhost:8000/api/platform-metrics/telemetry");
+        const res = await axios.get(`${API_BASE}/platform-metrics/telemetry`);
         setData(res.data);
       } catch {
         // Fallback default mockup telemetry

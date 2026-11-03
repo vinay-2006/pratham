@@ -114,6 +114,15 @@ def evaluate_analyte(
     """
     Evaluates a numeric lab analyte against reference intervals based on clinical context.
     """
+    if not analyte_name:
+        return {
+            "analyte": analyte_name or "unknown",
+            "value": value,
+            "unit": "",
+            "reference_interval": "N/A",
+            "status": "unknown",
+            "clinical_significance": "Unable to evaluate — analyte name missing.",
+        }
     key = CANONICAL_ANALYTES.get(analyte_name.lower().strip(), analyte_name.lower().strip())
     db_entry = REFERENCE_DATABASE.get(key)
 

@@ -6,6 +6,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { ShieldCheck, GitBranch, Cpu, Code2, Award, Terminal, X, RefreshCw } from "lucide-react";
+import { API_BASE } from "@/lib/api-config";
 
 interface ReleaseInfo {
   project: string;
@@ -39,8 +40,8 @@ export function RecruiterMode({ onClose }: { onClose?: () => void }) {
   useEffect(() => {
     async function fetchData() {
       try {
-        const releaseRes = await axios.get("http://localhost:8000/api/release");
-        const telemetryRes = await axios.get("http://localhost:8000/api/platform-metrics/telemetry");
+        const releaseRes = await axios.get(`${API_BASE}/release`);
+        const telemetryRes = await axios.get(`${API_BASE}/platform-metrics/telemetry`);
         setRelease(releaseRes.data);
         setStats(telemetryRes.data.codebase_stats);
       } catch {

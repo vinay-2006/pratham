@@ -9,7 +9,7 @@ from datetime import date, datetime
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 # ── Legacy enums kept for compatibility with other routes ─────────────────────
@@ -65,9 +65,18 @@ class EmergencyIntakeCreate(BaseModel):
     patient: PatientCreate
     vitals: VitalsCreate
     symptoms: SymptomsCreate
+    arrival_type: Optional[str] = "walk_in"
     ambulance_eta: Optional[int] = None
     emergency_description: Optional[str] = None
     chief_complaint: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_required_vitals(self):
+        """Ensure at least heart_rate and spo2 are provided — rejects bypassed frontend submissions."""
+        v = self.vitals
+        if v.heart_rate is None and v.spo2 is None:
+            raise ValueError("At least heart_rate and spo2 must be provided in vitals.")
+        return self
 
 
 class IntakeResponse(BaseModel):

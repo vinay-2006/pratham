@@ -8,7 +8,7 @@
 
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import type { ClinicalReport as ClinicalReportData, StageStatus } from "@/lib/report-api";
+import type { ClinicalReport as ClinicalReportData } from "@/lib/report-api";
 import { PipelineStatus } from "./pipeline-status";
 import {
   Activity,
@@ -33,13 +33,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 interface Props {
   report: ClinicalReportData;
   reportRef?: React.RefObject<HTMLDivElement | null>;
-  pipelineStages?: {
-    nlp: StageStatus;
-    risk: StageStatus;
-    lab: StageStatus;
-    imaging: StageStatus;
-    aggregation: StageStatus;
-  };
+  pipelineStages?: object;
   isPolling?: boolean;
 }
 

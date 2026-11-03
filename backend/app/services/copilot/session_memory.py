@@ -1,40 +1,45 @@
 """
-PRATHAM Copilot — Server-Side Session Memory Engine
-Maintains conversation state and active context mapping for follow-up resolution.
+PRATHAM Copilot — server-side session memory.
+
+Sessions are namespaced by user id, so one user can never read or continue
+another user's conversation, even by guessing the session id.
 """
 
-from typing import Dict, Any, List
+from __future__ import annotations
+
+from typing import Any, Dict, List
+
+MAX_TURNS_KEPT = 20
+MAX_SESSIONS = 500
 
 _SESSION_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
-def get_or_create_session(session_id: str, intake_id: str = "INT-100") -> Dict[str, Any]:
-    """Retrieve or initialize server-side session memory."""
-    if session_id not in _SESSION_CACHE:
-        _SESSION_CACHE[session_id] = {
-            "session_id": session_id,
-            "intake_id": intake_id,
-            "active_focus": "Community-Acquired Pneumonia",
-            "history": [],
-        }
-    return _SESSION_CACHE[session_id]
+def _key(user_id: str, session_id: str) -> str:
+    return f"{user_id}::{session_id}"
 
 
-def update_session_history(session_id: str, query: str, answer_obj: Dict[str, Any]) -> None:
-    """Record query and structured response in session memory."""
-    session = get_or_create_session(session_id)
-    session["history"].append({
-        "query": query,
-        "answer_type": answer_obj.get("answer_type", "NARRATIVE"),
-        "answer_summary": answer_obj.get("answer", "")[:100],
-    })
-    # Update active condition focus if mentioned
-    ans_text = answer_obj.get("answer", "").lower()
-    if "pneumon" in ans_text:
-        session["active_focus"] = "Community-Acquired Pneumonia"
-    elif "coronary" in ans_text or "acs" in ans_text:
-        session["active_focus"] = "Acute Coronary Syndrome"
-    elif "embolism" in ans_text or "pe" in ans_text:
-        session["active_focus"] = "Pulmonary Embolism"
-    elif "sepsis" in ans_text:
-        session["active_focus"] = "Sepsis"
+def get_or_create_session(user_id: str, session_id: str, intake_id: str = "") -> Dict[str, Any]:
+    k = _key(user_id, session_id)
+    if k not in _SESSION_CACHE:
+        if len(_SESSION_CACHE) >= MAX_SESSIONS:
+            _SESSION_CACHE.pop(next(iter(_SESSION_CACHE)))
+        _SESSION_CACHE[k] = {"session_id": session_id, "intake_id": intake_id, "history": []}
+    return _SESSION_CACHE[k]
+
+
+def recent_turns(user_id: str, session_id: str, n: int = 6) -> List[Dict[str, str]]:
+    """Last n turns as [{'query','answer'}] — used to resolve follow-up questions."""
+    session = _SESSION_CACHE.get(_key(user_id, session_id))
+    return session["history"][-n:] if session else []
+
+
+def update_session_history(user_id: str, session_id: str, intake_id: str, query: str, answer: str) -> None:
+    session = get_or_create_session(user_id, session_id, intake_id)
+    session["intake_id"] = intake_id
+    session["history"].append({"query": query, "answer": answer[:600]})
+    del session["history"][:-MAX_TURNS_KEPT]
+
+
+def clear_sessions() -> None:
+    _SESSION_CACHE.clear()

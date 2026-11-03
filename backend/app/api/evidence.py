@@ -15,6 +15,13 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 
 import logging
 from app.db.supabase_client import supabase
+from app.domains.evidence.repository import evidence_repository
+from app.domains.ai.repository import (
+    imaging_results_repository,
+    lab_results_repository,
+    aggregation_results_repository,
+)
+from app.services.workflow_service import update_status_on_evidence_upload
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -24,85 +31,13 @@ BUCKET = "evidence"
 SIGNED_URL_EXPIRY = 7 * 24 * 60 * 60  # 7 days in seconds
 
 # ── Investigation → Evidence type mapping ──────────────────────────────────────
-# Single source of truth. Frontend receives evidence_type from the backend;
-# it never performs this mapping itself.
-INVESTIGATION_EVIDENCE_MAP: dict[str, str] = {
-    # ECG
-    "ECG": "ecg",
-    "EKG": "ecg",
-    "Electrocardiogram": "ecg",
-    "12-Lead ECG": "ecg",
-    # Imaging
-    "Chest X-ray": "xray",
-    "Chest X Ray": "xray",
-    "Chest Xray": "xray",
-    "X-ray": "xray",
-    "CT Brain": "xray",
-    "CT Chest": "xray",
-    "CT Scan": "xray",
-    "CT Angiography": "xray",
-    "CTPA": "xray",
-    "MRI": "xray",
-    "Ultrasound": "xray",
-    "FAST scan": "xray",
-    "FAST Scan": "xray",
-    "Echo": "xray",
-    "Echocardiogram": "xray",
-    # Lab reports
-    "Troponin": "lab_report",
-    "CBC": "lab_report",
-    "ABG": "lab_report",
-    "D-Dimer": "lab_report",
-    "BMP": "lab_report",
-    "Basic Metabolic Panel": "lab_report",
-    "CMP": "lab_report",
-    "BNP": "lab_report",
-    "NT-proBNP": "lab_report",
-    "LFT": "lab_report",
-    "RFT": "lab_report",
-    "Serum Electrolytes": "lab_report",
-    "Blood Glucose": "lab_report",
-    "Blood Culture": "lab_report",
-    "Urine Analysis": "lab_report",
-    "Urinalysis": "lab_report",
-    "Urine Culture": "lab_report",
-    "Coagulation": "lab_report",
-    "PT/INR": "lab_report",
-    "Prothrombin Time": "lab_report",
-    "CRP": "lab_report",
-    "Procalcitonin": "lab_report",
-    "Lactate": "lab_report",
-    "Lipase": "lab_report",
-    "Amylase": "lab_report",
-    "Cortisol": "lab_report",
-    "Thyroid Function": "lab_report",
-    "TSH": "lab_report",
-    "Blood Group": "lab_report",
-    "Crossmatch": "lab_report",
-    "Cardiac Enzymes": "lab_report",
-}
-
-
-def get_evidence_type(investigation_type: str) -> str:
-    """
-    Map an investigation_type string to a valid evidence_type.
-    Falls back to keyword matching, then 'clinical_notes'.
-    """
-    if not investigation_type:
-        return "clinical_notes"
-    # Exact match
-    mapped = INVESTIGATION_EVIDENCE_MAP.get(investigation_type)
-    if mapped:
-        return mapped
-    # Fuzzy keyword matching
-    lower = investigation_type.lower()
-    if any(k in lower for k in ("x-ray", "xray", "ct", "mri", "scan", "imaging", "ultrasound", "echo", "angio")):
-        return "xray"
-    if any(k in lower for k in ("ecg", "ekg", "electrocardiogram")):
-        return "ecg"
-    if any(k in lower for k in ("blood", "lab", "serum", "urine", "culture", "level", "count", "troponin", "enzyme")):
-        return "lab_report"
-    return "clinical_notes"
+# Imported from shared utility — single source of truth lives in
+# app/domains/shared/utils/evidence_mapping.py (P5 — Phase 3.1).
+# Re-exported here so callers that import from this module are unaffected.
+from app.domains.shared.utils.evidence_mapping import (  # noqa: E402
+    INVESTIGATION_EVIDENCE_MAP,
+    get_evidence_type,
+)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -128,23 +63,7 @@ def _insert_evidence_row(payload: dict) -> dict:
     Gracefully falls back without 'investigation_id' if the column
     has not been added to the table yet (PGRST204 error).
     """
-    try:
-        result = supabase.table("evidence").insert(payload).execute()
-        if result.data:
-            return result.data[0]
-        raise Exception("Evidence insert returned empty data")
-    except Exception as e:
-        err_str = str(e)
-        # Column doesn't exist yet — retry without it
-        if "investigation_id" in err_str and (
-            "PGRST204" in err_str or "column" in err_str.lower()
-        ):
-            payload_fallback = {k: v for k, v in payload.items() if k != "investigation_id"}
-            result = supabase.table("evidence").insert(payload_fallback).execute()
-            if result.data:
-                return result.data[0]
-            raise Exception("Evidence insert (fallback) returned empty data")
-        raise
+    return evidence_repository.create_with_fallback(payload)
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -236,6 +155,10 @@ async def upload_evidence(
     try:
         evidence_row = _insert_evidence_row(insert_payload)
         evidence_id = evidence_row.get("id")
+        update_status_on_evidence_upload(intake_id)
+        # Invalidate cached report since evidence has changed
+        from app.services.report_service import invalidate_report_cache
+        invalidate_report_cache(intake_id)
     except Exception as db_err:
         # Best-effort: remove uploaded file if DB insert fails
         try:
@@ -268,23 +191,21 @@ async def get_evidence(intake_id: str):
     try:
         # Try with investigation_id column first; fall back if column doesn't exist
         try:
-            result = (
-                supabase.table("evidence")
-                .select("id, intake_id, evidence_type, file_url, file_name, uploaded_at, investigation_id")
-                .eq("intake_id", intake_id)
-                .order("uploaded_at", desc=True)
-                .execute()
+            rows = evidence_repository.get_by_intake_id_with_columns(
+                intake_id,
+                columns="id, intake_id, evidence_type, file_url, file_name, uploaded_at, investigation_id",
+                order_by="uploaded_at",
+                desc=True,
             )
         except Exception:
-            result = (
-                supabase.table("evidence")
-                .select("id, intake_id, evidence_type, file_url, file_name, uploaded_at")
-                .eq("intake_id", intake_id)
-                .order("uploaded_at", desc=True)
-                .execute()
+            rows = evidence_repository.get_by_intake_id_with_columns(
+                intake_id,
+                columns="id, intake_id, evidence_type, file_url, file_name, uploaded_at",
+                order_by="uploaded_at",
+                desc=True,
             )
 
-        rows = result.data or []
+
         return {
             "intake_id": intake_id,
             "count": len(rows),
@@ -336,29 +257,23 @@ def cleanup_ai_results(intake_id: str, evidence_type: str, evidence_id: str):
 
     try:
         # Check if other evidence of same type still exists for the intake
-        res = (
-            supabase.table("evidence")
-            .select("id")
-            .eq("intake_id", intake_id)
-            .eq("evidence_type", evidence_type)
-            .execute()
-        )
-        other_evidence = [r for r in (res.data or []) if r.get("id") != evidence_id]
+        all_of_type = evidence_repository.get_by_intake_id_and_type(intake_id, evidence_type)
+        other_evidence = [r for r in all_of_type if r.get("id") != evidence_id]
         
         if not other_evidence:
             # Delete corresponding AI results and reset pipeline stage
             if evidence_type == "xray":
                 logger.info("[PRATHAM] Cleaning up imaging results for intake %s (no remaining xrays)", intake_id)
-                supabase.table("imaging_results").delete().eq("intake_id", intake_id).execute()
+                imaging_results_repository.delete_by_intake_id(intake_id)
                 reset_stage(intake_id, "imaging")
             elif evidence_type == "lab_report":
                 logger.info("[PRATHAM] Cleaning up lab results for intake %s (no remaining lab reports)", intake_id)
-                supabase.table("lab_results").delete().eq("intake_id", intake_id).execute()
+                lab_results_repository.delete_by_intake_id(intake_id)
                 reset_stage(intake_id, "lab")
                 
         # Always invalidate aggregation_results and reset aggregation pipeline
         logger.info("[PRATHAM] Invalidating aggregation results for intake %s", intake_id)
-        supabase.table("aggregation_results").delete().eq("intake_id", intake_id).execute()
+        aggregation_results_repository.delete_by_intake_id(intake_id)
         reset_stage(intake_id, "aggregation")
     except Exception as exc:
         logger.warning("[PRATHAM] Error during AI results cleanup: %s", exc)
@@ -377,20 +292,17 @@ async def delete_evidence(evidence_id: str):
     """
     # 1. Fetch existing row
     try:
-        result = (
-            supabase.table("evidence")
-            .select("id, intake_id, evidence_type, file_url, file_name")
-            .eq("id", evidence_id)
-            .limit(1)
-            .execute()
+        row = evidence_repository.get_by_id_with_columns(
+            evidence_id,
+            columns="id, intake_id, evidence_type, file_url, file_name",
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"DB error fetching evidence: {exc}")
 
-    if not result.data:
+    if not row:
         raise HTTPException(status_code=404, detail=f"Evidence {evidence_id!r} not found.")
 
-    row = result.data[0]
+
 
     # 2. Resolve storage path from file_url and remove from storage
     file_url = row.get("file_url", "") or ""
@@ -424,11 +336,14 @@ async def delete_evidence(evidence_id: str):
 
     # 4. Delete the DB row
     try:
-        supabase.table("evidence").delete().eq("id", evidence_id).execute()
+        evidence_repository.delete(evidence_id)
     except Exception as db_err:
         raise HTTPException(status_code=500, detail=f"DB delete failed: {db_err}")
 
-    # 5. Return 204
+    # 5. Invalidate cached report since evidence has changed
+    if intake_id:
+        from app.services.report_service import invalidate_report_cache
+        invalidate_report_cache(intake_id)
+
+    # 6. Return 204
     return None
-
-

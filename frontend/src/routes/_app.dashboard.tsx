@@ -21,6 +21,7 @@ export const Route = createFileRoute("/_app/dashboard")({
 
 function DashboardPage() {
   const { patientCase } = useCase();
+  const [alerts, setAlerts] = useState(patientCase?.preparationAlerts ?? []);
 
   if (!patientCase) {
     return (
@@ -31,8 +32,6 @@ function DashboardPage() {
       </div>
     );
   }
-
-  const [alerts, setAlerts] = useState(patientCase.preparationAlerts);
 
   // sync alerts when case toggles
   if (alerts[0]?.label !== patientCase.preparationAlerts[0]?.label || alerts.length !== patientCase.preparationAlerts.length) {

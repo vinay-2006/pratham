@@ -8,7 +8,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { Users, RotateCcw, AlertTriangle, ShieldCheck, CheckCircle2, PlayCircle } from "lucide-react";
 
-const API_BASE = "http://localhost:8000/api";
+import { API_BASE } from "@/lib/api-config";
 
 interface DemoCase {
   id: string;

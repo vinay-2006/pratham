@@ -11,8 +11,7 @@
  */
 
 import axios from "axios";
-
-const API_BASE = "http://localhost:8000/api";
+import { API_BASE } from "./api-config";
 
 // ── Type definitions ─────────────────────────────────────────────────────
 
@@ -226,6 +225,12 @@ export interface PipelineStatus {
 export interface ClinicalReport {
   intake_id: string;
   generated_at: string;
+  /** Live workflow status (e.g. "clinical_report_ready", "case_closed"). */
+  status?: string;
+  case_id?: string;
+  arrival_type?: string;
+  severity?: string;
+  created_at?: string | null;
   report_version: string;
   patient_summary: PatientSummary;
   vitals: Vitals;
@@ -240,6 +245,10 @@ export interface ClinicalReport {
   investigations: { id: string; investigation_type: string; status: string; review_notes?: string }[];
   clinical_interpretation: ClinicalInterpretation;
   clinical_conclusions: ClinicalConclusions;
+  clinician_report?: {
+    investigations_matrix?: { status: string; [key: string]: unknown }[];
+    [key: string]: unknown;
+  };
 }
 
 // ── Fetch functions ─────────────────────────────────────────────────────
@@ -252,6 +261,14 @@ export async function fetchClinicalReport(intakeId: string): Promise<ClinicalRep
 export async function fetchPipelineStatus(intakeId: string): Promise<PipelineStatusResponse> {
   const { data } = await axios.get<PipelineStatusResponse>(
     `${API_BASE}/pipeline/status/${intakeId}`
+  );
+  return data;
+}
+
+export async function markReportReviewed(intakeId: string, doctorName?: string): Promise<{ status: string; transitioned: boolean }> {
+  const { data } = await axios.post<{ status: string; transitioned: boolean }>(
+    `${API_BASE}/report/${intakeId}/mark-reviewed`,
+    { doctor_name: doctorName || "Doctor on Duty" }
   );
   return data;
 }

@@ -1,0 +1,112 @@
+{
+  "routes": [
+    {
+      "file": "index.tsx",
+      "route": "index"
+    },
+    {
+      "file": "_app.admin.tsx",
+      "route": "admin"
+    },
+    {
+      "file": "_app.architecture.tsx",
+      "route": "architecture"
+    },
+    {
+      "file": "_app.command-center.tsx",
+      "route": "command-center"
+    },
+    {
+      "file": "_app.comparison.tsx",
+      "route": "comparison"
+    },
+    {
+      "file": "_app.confidence.tsx",
+      "route": "confidence"
+    },
+    {
+      "file": "_app.copilot.tsx",
+      "route": "copilot"
+    },
+    {
+      "file": "_app.dashboard.tsx",
+      "route": "dashboard"
+    },
+    {
+      "file": "_app.differential.tsx",
+      "route": "differential"
+    },
+    {
+      "file": "_app.doctor.approvals.tsx",
+      "route": "doctor.approvals"
+    },
+    {
+      "file": "_app.doctor.dashboard.tsx",
+      "route": "doctor.dashboard"
+    },
+    {
+      "file": "_app.doctor.report.$intakeId.tsx",
+      "route": "doctor.report.$intakeId"
+    },
+    {
+      "file": "_app.doctor.report.latest.tsx",
+      "route": "doctor.report.latest"
+    },
+    {
+      "file": "_app.doctor.review.tsx",
+      "route": "doctor.review"
+    },
+    {
+      "file": "_app.evidence.tsx",
+      "route": "evidence"
+    },
+    {
+      "file": "_app.explainability.tsx",
+      "route": "explainability"
+    },
+    {
+      "file": "_app.imaging.tsx",
+      "route": "imaging"
+    },
+    {
+      "file": "_app.intake.tsx",
+      "route": "intake"
+    },
+    {
+      "file": "_app.investigations.tsx",
+      "route": "investigations"
+    },
+    {
+      "file": "_app.knowledge.tsx",
+      "route": "knowledge"
+    },
+    {
+      "file": "_app.nurse.dashboard.tsx",
+      "route": "nurse.dashboard"
+    },
+    {
+      "file": "_app.nurse.intake.tsx",
+      "route": "nurse.intake"
+    },
+    {
+      "file": "_app.nurse.queue.tsx",
+      "route": "nurse.queue"
+    },
+    {
+      "file": "_app.review.tsx",
+      "route": "review"
+    },
+    {
+      "file": "_app.search.tsx",
+      "route": "search"
+    },
+    {
+      "file": "_app.tsx",
+      "route": "tsx"
+    },
+    {
+      "file": "__root.tsx",
+      "route": "/"
+    }
+  ]
+}

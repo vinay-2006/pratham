@@ -5,9 +5,10 @@ import {
   type PatientCase,
 } from "./mock-data";
 
-const API_BASE = "http://localhost:8000/api";
+import { API_BASE } from "./api-config";
+import { useAuth, type Role } from "./auth";
 
-export type Role = "nurse" | "doctor";
+export type { Role };
 
 interface CaseContextValue {
   patientCase: PatientCase | null;
@@ -35,7 +36,10 @@ const CaseContext = createContext<CaseContextValue | null>(null);
 
 export function CaseProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
-  const [role, setRole] = useState<Role>("nurse");
+  const { user } = useAuth();
+  // Role is owned by the signed-in account — it can no longer be switched client-side.
+  const role: Role = user?.role ?? "nurse";
+  const setRole = useCallback((_r: Role) => {}, []);
   const [notifications, setNotifications] = useState<DoctorNotification[]>([]);
   const [isLoadingNotifications, setIsLoadingNotifications] = useState(true);
   const [patientCase, setPatientCase] = useState<PatientCase | null>(null);
@@ -99,22 +103,21 @@ export function CaseProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    refreshNotifications();
-  }, [refreshNotifications]);
-
-  useEffect(() => {
-    const savedId = localStorage.getItem("current_intake_id");
-    if (savedId) {
-      fetchDbPatientCase(savedId);
+    if (!user) {
+      setNotifications([]);
+      setPatientCase(null);
+      return;
     }
-  }, [fetchDbPatientCase]);
+    // Admins have no patient worklist; nurses/doctors load theirs.
+    if (user.role !== "admin") refreshNotifications();
+    const savedId = localStorage.getItem("current_intake_id");
+    if (savedId && user.role !== "admin") fetchDbPatientCase(savedId);
+  }, [user, refreshNotifications, fetchDbPatientCase]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const t = localStorage.getItem("pratham-theme");
     if (t === "dark" || t === "light") setTheme(t);
-    const r = localStorage.getItem("pratham-role");
-    if (r === "nurse" || r === "doctor") setRole(r);
   }, []);
 
   useEffect(() => {
@@ -122,11 +125,6 @@ export function CaseProvider({ children }: { children: React.ReactNode }) {
     document.documentElement.classList.toggle("dark", theme === "dark");
     localStorage.setItem("pratham-theme", theme);
   }, [theme]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    localStorage.setItem("pratham-role", role);
-  }, [role]);
 
   const approveNotification = useCallback((id: string) => {
     setNotifications((curr) => curr.map((n) => (n.id === id ? { ...n, status: "Approved" } : n)));

@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Bell, Brain, Moon, Siren, Sparkles, Sun, UserRound } from "lucide-react";
+import { Bell, Brain, LogOut, Moon, Siren, Sparkles, Sun, UserRound } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useCase, type Role } from "@/lib/case-store";
+import { useCase } from "@/lib/case-store";
+import { ROLE_HOME, useAuth } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Separator } from "@/components/ui/separator";
@@ -17,32 +18,38 @@ export function TopBar() {
     theme,
     toggleTheme,
     role,
-    setRole,
     pendingCount,
     activeEmergencyCount,
   } = useCase();
 
-  const handleRoleChange = (newRole: Role) => {
-    setRole(newRole);
-    if (newRole === "nurse") {
-      navigate({ to: "/nurse/dashboard" });
-    } else {
-      navigate({ to: "/doctor/dashboard" });
-    }
+  const { user, logout } = useAuth();
+  const handleLogout = () => {
+    logout();
+    navigate({ to: "/login" });
   };
 
   return (
     <>
       <header className="sticky top-0 z-20 flex h-14 items-center gap-3 border-b bg-background/85 px-3 backdrop-blur md:px-5">
+        <Link
+          to="/"
+          className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors hover:bg-muted"
+        >
+          ← Portfolio
+        </Link>
+        <Separator orientation="vertical" className="h-6" />
         <SidebarTrigger />
         <Separator orientation="vertical" className="h-6" />
 
-        <RoleSwitcher role={role} onChange={handleRoleChange} />
+        <div className="flex flex-col leading-tight">
+          <span className="text-xs font-semibold">{user?.name}</span>
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground">{role}{user?.department ? ` · ${user.department}` : ""}</span>
+        </div>
 
-        <Separator orientation="vertical" className="hidden h-6 md:block" />
+        <Separator orientation="vertical" className="hidden h-6 xl:block" />
 
         {patientCase ? (
-          <div className="hidden items-center gap-2 md:flex">
+          <div className="hidden items-center gap-2 xl:flex">
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted">
               <UserRound className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
@@ -56,7 +63,7 @@ export function TopBar() {
             </div>
           </div>
         ) : (
-          <div className="hidden items-center gap-2 md:flex">
+          <div className="hidden items-center gap-2 xl:flex">
             <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted">
               <UserRound className="h-3.5 w-3.5 text-muted-foreground" />
             </div>
@@ -82,12 +89,15 @@ export function TopBar() {
             tone="high"
           />
           <Link
-            to={role === "doctor" ? "/doctor/approvals" : "/nurse/dashboard"}
-            className="hidden sm:block"
+            to={role === "doctor" ? "/doctor/approvals" : ROLE_HOME[role]}
+            className="hidden lg:block"
           >
             <Counter icon={Bell} label="Pending" value={pendingCount} tone="primary" />
           </Link>
 
+          <Button variant="ghost" size="icon" aria-label="Sign out" title="Sign out" onClick={handleLogout} className="h-8 w-8">
+            <LogOut className="h-4 w-4" />
+          </Button>
           {patientCase && <EvidenceCompletenessPill level={patientCase.evidenceCompleteness} />}
 
           <Button
@@ -106,30 +116,9 @@ export function TopBar() {
       <CopilotAssistantDrawer
         isOpen={copilotOpen}
         onClose={() => setCopilotOpen(false)}
-        intakeId={patientCase?.id || "INT-100"}
+        intakeId={role === "admin" ? undefined : patientCase?.id}
       />
     </>
-  );
-}
-
-function RoleSwitcher({ role, onChange }: { role: Role; onChange: (r: Role) => void }) {
-  return (
-    <div className="inline-flex items-center rounded-md border bg-card p-0.5 text-xs">
-      {(["nurse", "doctor"] as const).map((r) => (
-        <button
-          key={r}
-          onClick={() => onChange(r)}
-          className={cn(
-            "rounded-[5px] px-2.5 py-1 font-medium capitalize transition-colors",
-            role === r
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {r}
-        </button>
-      ))}
-    </div>
   );
 }
 

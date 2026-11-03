@@ -8,6 +8,7 @@ import axios from "axios";
 import { Activity, AlertTriangle, Users, Cpu, ShieldAlert, RefreshCw, AlertCircle } from "lucide-react";
 
 import { API_BASE } from "@/lib/api-config";
+import { apiErrorMessage } from "@/lib/api-error";
 
 interface PriorityBoardItem {
   intake_id: string;
@@ -52,7 +53,7 @@ export function CommandCenterView() {
       console.error("[PRATHAM] Command Center telemetry fetch failed:", err);
       setError(
         axios.isAxiosError(err)
-          ? err.response?.data?.detail ?? err.message
+          ? apiErrorMessage(err)
           : "Failed to load telemetry data."
       );
       setData(null);

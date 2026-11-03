@@ -18,6 +18,7 @@ import {
   ShieldAlert,
   Stethoscope,
   Users,
+  Archive,
 } from "lucide-react";
 import {
   Sidebar,
@@ -32,13 +33,13 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import { useCase } from "@/lib/case-store";
-import { fetchQueueStats } from "@/lib/patient-queue-api";
+import { fetchQueueStats, fetchDoctorDashboardStats } from "@/lib/patient-queue-api";
 
 interface NavItem {
   title: string;
   url: string;
   icon: typeof Users;
-  badgeKey?: "pending" | "queue";
+  badgeKey?: "pending" | "queue" | "reports";
 }
 
 interface NavGroup {
@@ -53,6 +54,7 @@ const nurseGroups: NavGroup[] = [
       { title: "Dashboard", url: "/nurse/dashboard", icon: LayoutDashboard },
       { title: "Emergency Intake", url: "/nurse/intake", icon: Ambulance },
       { title: "Patient Queue", url: "/nurse/queue", icon: Users, badgeKey: "queue" },
+      { title: "Patient Registry", url: "/nurse/registry", icon: Archive },
       { title: "Investigations", url: "/investigations", icon: ClipboardList },
     ],
   },
@@ -62,7 +64,6 @@ const nurseGroups: NavGroup[] = [
       { title: "AI Copilot", url: "/copilot", icon: Brain },
       { title: "ED Command Center", url: "/command-center", icon: Activity },
       { title: "Clinical Search", url: "/search", icon: Search },
-      { title: "Admin Telemetry", url: "/admin", icon: LayoutDashboard },
     ],
   },
 ];
@@ -72,10 +73,9 @@ const doctorGroups: NavGroup[] = [
     label: "Doctor workstation",
     items: [
       { title: "Dashboard", url: "/doctor/dashboard", icon: LayoutDashboard },
-      { title: "Approvals", url: "/doctor/approvals", icon: ClipboardCheck, badgeKey: "pending" },
-      { title: "Patient Queue", url: "/nurse/queue", icon: Users, badgeKey: "queue" },
-      { title: "Patient Review", url: "/doctor/review", icon: Stethoscope },
-      { title: "Clinical Report", url: "/doctor/report/latest", icon: FileText },
+      { title: "Clinical Worklist", url: "/doctor/review", icon: Stethoscope, badgeKey: "pending" },
+      { title: "Clinical Reports", url: "/doctor/reports", icon: FileText, badgeKey: "reports" },
+      { title: "Patient Registry", url: "/nurse/registry", icon: Archive },
     ],
   },
   {
@@ -97,26 +97,28 @@ const doctorGroups: NavGroup[] = [
       { title: "Clinical Search", url: "/search", icon: Search },
       { title: "Knowledge Base", url: "/knowledge", icon: BookOpen },
       { title: "Architecture", url: "/architecture", icon: Layers },
-      { title: "Admin Telemetry", url: "/admin", icon: LayoutDashboard },
     ],
   },
 ];
 
-const showcaseGroup: NavGroup = {
-  label: "Showcase & Portfolio",
-  items: [
-    { title: "SaaS Landing Page", url: "/", icon: Activity },
-    { title: "Knowledge Base", url: "/knowledge", icon: BookOpen },
-    { title: "Architecture", url: "/architecture", icon: Layers },
-    { title: "Admin Telemetry", url: "/admin", icon: LayoutDashboard },
-  ],
-};
+const adminGroups: NavGroup[] = [
+  {
+    label: "Administration",
+    items: [
+      { title: "Admin Telemetry", url: "/admin", icon: LayoutDashboard },
+      { title: "ED Command Center", url: "/command-center", icon: Activity },
+      { title: "AI Copilot", url: "/copilot", icon: Brain },
+      { title: "Knowledge Base", url: "/knowledge", icon: BookOpen },
+      { title: "Architecture", url: "/architecture", icon: Layers },
+    ],
+  },
+];
 
 export function AppSidebar() {
   const { role, pendingCount } = useCase();
   const currentPath = useRouterState({ select: (s) => s.location.pathname });
   const isActive = (p: string) => currentPath === p;
-  const groups = [...(role === "doctor" ? doctorGroups : nurseGroups), showcaseGroup];
+  const groups = role === "doctor" ? doctorGroups : role === "admin" ? adminGroups : nurseGroups;
 
   // Lightweight queue stats for sidebar badge
   const { data: queueStats } = useQuery({
@@ -124,6 +126,17 @@ export function AppSidebar() {
     queryFn: fetchQueueStats,
     refetchInterval: 30_000,
     staleTime: 15_000,
+    enabled: role !== "admin",
+  });
+
+  // Doctor stats for workspace badges — uses same query key as dashboard
+  // so TanStack Query shares the cached response (no duplicate HTTP request)
+  const { data: docStats } = useQuery({
+    queryKey: ["doctor-dashboard-stats"],
+    queryFn: fetchDoctorDashboardStats,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+    enabled: role === "doctor",
   });
 
   const queueBadgeCount = queueStats?.pending_approval_patients ?? 0;
@@ -138,7 +151,7 @@ export function AppSidebar() {
           <div className="flex flex-col leading-tight group-data-[collapsible=icon]:hidden">
             <span className="font-display text-sm font-semibold tracking-tight">PRATHAM</span>
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              {role === "doctor" ? "Doctor view" : "Nurse view"}
+              {role === "doctor" ? "Doctor view" : role === "admin" ? "Admin view" : "Nurse view"}
             </span>
           </div>
         </Link>
@@ -152,8 +165,15 @@ export function AppSidebar() {
                 {g.items.map((item) => {
                   // Determine badge value
                   let badgeValue = 0;
-                  if (item.badgeKey === "pending") badgeValue = pendingCount;
-                  if (item.badgeKey === "queue") badgeValue = queueBadgeCount;
+                  if (item.badgeKey === "pending") {
+                    badgeValue = role === "doctor" && docStats ? docStats.pending_approvals : pendingCount;
+                  }
+                  if (item.badgeKey === "reports") {
+                    badgeValue = docStats ? docStats.clinical_reviews_remaining : 0;
+                  }
+                  if (item.badgeKey === "queue") {
+                    badgeValue = queueBadgeCount;
+                  }
                   const showBadge = badgeValue > 0;
 
                   return (
