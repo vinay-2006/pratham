@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.api import report as report_api
 
-client = TestClient(app, raise_server_exceptions=False)
+client = TestClient(app, raise_server_exceptions=False, headers={"Authorization": "Bearer t"})
 
 CACHED_REPORT = {
     "intake_id": "abc123",

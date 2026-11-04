@@ -10,6 +10,7 @@ import {
 
 import appCss from "../styles.css?url";
 import { CaseProvider } from "@/lib/case-store";
+import { AuthProvider } from "@/lib/auth";
 import { Toaster } from "@/components/ui/sonner";
 
 function NotFoundComponent() {
@@ -117,10 +118,12 @@ function RootComponent() {
   const { queryClient } = Route.useRouteContext();
   return (
     <QueryClientProvider client={queryClient}>
-      <CaseProvider>
-        <Outlet />
-        <Toaster />
-      </CaseProvider>
+      <AuthProvider>
+        <CaseProvider>
+          <Outlet />
+          <Toaster />
+        </CaseProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 }

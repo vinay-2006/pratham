@@ -12,7 +12,8 @@ import logging
 import re
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException
+from app.core.auth import AuthUser, get_current_user
+from fastapi import Depends, APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from app.services.report_service import get_complete_report
@@ -53,7 +54,7 @@ async def get_clinical_report(intake_id: str):
 
 
 @router.post("/report/{intake_id}/mark-reviewed", tags=["Clinical Report"])
-async def mark_report_reviewed(intake_id: str, data: Optional[MarkReviewedRequest] = None):
+async def mark_report_reviewed(intake_id: str, data: Optional[MarkReviewedRequest] = None, user: AuthUser = Depends(get_current_user)):
     """
     Explicitly transition the intake status from REPORT_READY to UNDER_REVIEW.
     """
@@ -62,7 +63,7 @@ async def mark_report_reviewed(intake_id: str, data: Optional[MarkReviewedReques
         from app.models.workflow import WorkflowStatus
         from app.services.workflow_service import update_workflow_status, get_workflow_status
         
-        doctor_name = data.doctor_name if data else "Doctor on Duty"
+        doctor_name = user.name
         
         intake_row = intake_repository.get_by_id(intake_id, columns="status")
         if not intake_row:

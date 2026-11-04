@@ -14,6 +14,9 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api import intake, nlp, risk, investigation, imaging, labs, aggregation, investigations, evidence, lab_analysis, imaging_analysis, report, pipeline, admin, command_center, explainability, search, copilot, demo, platform_metrics, release
+from app.api import auth as auth_api
+from app.core.auth import authorize
+from fastapi import Depends
 from app.ml.lab_model import load_lab_model
 from app.ml.imaging_model import load_imaging_model
 
@@ -179,27 +182,28 @@ app.add_middleware(
 )
 
 # ── Routers ─────────────────────────────────────────────────────────────────
-app.include_router(investigations.router, prefix="/api", tags=["Investigations"])
-app.include_router(intake.router, tags=["Intake"])
-app.include_router(nlp.router, prefix="/nlp", tags=["NLP"])
-app.include_router(risk.router, prefix="/risk", tags=["Risk"])
-app.include_router(investigation.router, prefix="/investigation", tags=["Investigation"])
-app.include_router(imaging.router, prefix="/evidence", tags=["Evidence"])
-app.include_router(labs.router, prefix="/evidence", tags=["Evidence"])
-app.include_router(aggregation.router, prefix="/api", tags=["Aggregation"])
-app.include_router(evidence.router, prefix="/api", tags=["Evidence Upload"])
-app.include_router(lab_analysis.router, prefix="/api", tags=["Lab Analysis"])
-app.include_router(imaging_analysis.router, prefix="/api", tags=["Imaging Analysis"])
-app.include_router(report.router, prefix="/api", tags=["Clinical Report"])
-app.include_router(pipeline.router, prefix="/api", tags=["Pipeline"])
-app.include_router(admin.router, prefix="/api", tags=["Admin Telemetry"])
-app.include_router(command_center.router, prefix="/api", tags=["Command Center"])
-app.include_router(explainability.router, prefix="/api", tags=["Explainability Explorer"])
-app.include_router(search.router, prefix="/api", tags=["Clinical Search"])
-app.include_router(copilot.router, prefix="/api/copilot", tags=["Clinical Copilot"])
-app.include_router(demo.router, prefix="/api/demo", tags=["Demo Management"])
-app.include_router(platform_metrics.router, prefix="/api/platform-metrics", tags=["Platform Telemetry"])
-app.include_router(release.router, prefix="/api/release", tags=["Release Details"])
+app.include_router(auth_api.router, prefix="/api/auth", tags=["Auth"])
+app.include_router(investigations.router, prefix="/api", tags=["Investigations"], dependencies=[Depends(authorize)])
+app.include_router(intake.router, tags=["Intake"], dependencies=[Depends(authorize)])
+app.include_router(nlp.router, prefix="/nlp", tags=["NLP"], dependencies=[Depends(authorize)])
+app.include_router(risk.router, prefix="/risk", tags=["Risk"], dependencies=[Depends(authorize)])
+app.include_router(investigation.router, prefix="/investigation", tags=["Investigation"], dependencies=[Depends(authorize)])
+app.include_router(imaging.router, prefix="/evidence", tags=["Evidence"], dependencies=[Depends(authorize)])
+app.include_router(labs.router, prefix="/evidence", tags=["Evidence"], dependencies=[Depends(authorize)])
+app.include_router(aggregation.router, prefix="/api", tags=["Aggregation"], dependencies=[Depends(authorize)])
+app.include_router(evidence.router, prefix="/api", tags=["Evidence Upload"], dependencies=[Depends(authorize)])
+app.include_router(lab_analysis.router, prefix="/api", tags=["Lab Analysis"], dependencies=[Depends(authorize)])
+app.include_router(imaging_analysis.router, prefix="/api", tags=["Imaging Analysis"], dependencies=[Depends(authorize)])
+app.include_router(report.router, prefix="/api", tags=["Clinical Report"], dependencies=[Depends(authorize)])
+app.include_router(pipeline.router, prefix="/api", tags=["Pipeline"], dependencies=[Depends(authorize)])
+app.include_router(admin.router, prefix="/api", tags=["Admin Telemetry"], dependencies=[Depends(authorize)])
+app.include_router(command_center.router, prefix="/api", tags=["Command Center"], dependencies=[Depends(authorize)])
+app.include_router(explainability.router, prefix="/api", tags=["Explainability Explorer"], dependencies=[Depends(authorize)])
+app.include_router(search.router, prefix="/api", tags=["Clinical Search"], dependencies=[Depends(authorize)])
+app.include_router(copilot.router, prefix="/api/copilot", tags=["Clinical Copilot"], dependencies=[Depends(authorize)])
+app.include_router(demo.router, prefix="/api/demo", tags=["Demo Management"], dependencies=[Depends(authorize)])
+app.include_router(platform_metrics.router, prefix="/api/platform-metrics", tags=["Platform Telemetry"], dependencies=[Depends(authorize)])
+app.include_router(release.router, prefix="/api/release", tags=["Release Details"], dependencies=[Depends(authorize)])
 
 
 # ── Health, Readiness, Metrics & Version ─────────────────────────────────────

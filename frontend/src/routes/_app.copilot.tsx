@@ -46,7 +46,7 @@ function CopilotPage() {
       <CopilotAssistantDrawer
         isOpen={isOpen}
         onClose={() => setIsOpen(false)}
-        intakeId={patientCase?.id || "INT-100"}
+        intakeId={patientCase?.id}
       />
     </div>
   );

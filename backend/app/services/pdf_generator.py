@@ -118,7 +118,7 @@ def generate_pdf(report: Dict[str, Any]) -> bytes:
 
     # ── Document Header ──────────────────────────────────────────────────────
     elements.append(Paragraph("PRATHAM EMERGENCY DIAGNOSTIC CLINICAL REPORT", styles["doc_title"]))
-    elements.append(Paragraph(f"Generated: {snap['generated_time']} | Reviewer: {snap['reviewer']}", styles["doc_subtitle"]))
+    elements.append(Paragraph(f"Generated: {snap.get('generated_time', '')} | Reviewer: {snap.get('reviewer') or report.get('reviewed_by') or 'Pending doctor review'}", styles["doc_subtitle"]))
     elements.append(HRFlowable(width="100%", thickness=1.5, color=COLOR_DARK, spaceAfter=6*mm))
 
     # ── Section 1: Patient Snapshot Cover Sheet ──────────────────────────────

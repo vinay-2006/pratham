@@ -64,7 +64,6 @@ const nurseGroups: NavGroup[] = [
       { title: "AI Copilot", url: "/copilot", icon: Brain },
       { title: "ED Command Center", url: "/command-center", icon: Activity },
       { title: "Clinical Search", url: "/search", icon: Search },
-      { title: "Admin Telemetry", url: "/admin", icon: LayoutDashboard },
     ],
   },
 ];
@@ -98,25 +97,28 @@ const doctorGroups: NavGroup[] = [
       { title: "Clinical Search", url: "/search", icon: Search },
       { title: "Knowledge Base", url: "/knowledge", icon: BookOpen },
       { title: "Architecture", url: "/architecture", icon: Layers },
-      { title: "Admin Telemetry", url: "/admin", icon: LayoutDashboard },
     ],
   },
 ];
 
-const showcaseGroup: NavGroup = {
-  label: "Showcase & Portfolio",
-  items: [
-    { title: "SaaS Landing Page", url: "/", icon: Activity },
-    { title: "Knowledge Base", url: "/knowledge", icon: BookOpen },
-    { title: "Architecture", url: "/architecture", icon: Layers },
-  ],
-};
+const adminGroups: NavGroup[] = [
+  {
+    label: "Administration",
+    items: [
+      { title: "Admin Telemetry", url: "/admin", icon: LayoutDashboard },
+      { title: "ED Command Center", url: "/command-center", icon: Activity },
+      { title: "AI Copilot", url: "/copilot", icon: Brain },
+      { title: "Knowledge Base", url: "/knowledge", icon: BookOpen },
+      { title: "Architecture", url: "/architecture", icon: Layers },
+    ],
+  },
+];
 
 export function AppSidebar() {
   const { role, pendingCount } = useCase();
   const currentPath = useRouterState({ select: (s) => s.location.pathname });
   const isActive = (p: string) => currentPath === p;
-  const groups = [...(role === "doctor" ? doctorGroups : nurseGroups), showcaseGroup];
+  const groups = role === "doctor" ? doctorGroups : role === "admin" ? adminGroups : nurseGroups;
 
   // Lightweight queue stats for sidebar badge
   const { data: queueStats } = useQuery({
@@ -124,6 +126,7 @@ export function AppSidebar() {
     queryFn: fetchQueueStats,
     refetchInterval: 30_000,
     staleTime: 15_000,
+    enabled: role !== "admin",
   });
 
   // Doctor stats for workspace badges — uses same query key as dashboard
@@ -148,7 +151,7 @@ export function AppSidebar() {
           <div className="flex flex-col leading-tight group-data-[collapsible=icon]:hidden">
             <span className="font-display text-sm font-semibold tracking-tight">PRATHAM</span>
             <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
-              {role === "doctor" ? "Doctor view" : "Nurse view"}
+              {role === "doctor" ? "Doctor view" : role === "admin" ? "Admin view" : "Nurse view"}
             </span>
           </div>
         </Link>
