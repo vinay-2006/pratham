@@ -1,36 +1,11 @@
+"""
+Phase 1 Verification Script
+Creates fresh patient → uploads distinct evidence per investigation →
+verifies filtering → tests delete → runs imaging + lab analysis.
+"""
+import json, os, sys, io, time, requests
 
-def main() -> int:
-    # 1. Create patient
-    step("1 · Create test patient")
-    payload = {
-        "patient": {
-            "first_name": "Phase1",
-            "last_name": "VerifyTest",
-            "date_of_birth": "1975-03-10",
-            "gender": "male",
-            "contact_number": "+91-9000000001",
-        },
-        "vitals": {
-            "heart_rate": 115,
-            "spo2": 89,
-            "bp_systolic": 155,
-            "bp_diastolic": 98,
-            "temperature": 38.8,
-            "respiratory_rate": 28,
-        },
-        "symptoms": {
-            "chest_pain": True,
-            "breathlessness": True,
-            "trauma": False,
-            "bleeding": False,
-            "unconsciousness": False,
-            "neurological_symptoms": False,
-        },
-        "arrival_type": "ambulance",
-        "ambulance_eta": 5,
-        "emergency_description": "Phase1 evidence filtering verification",
-        "chief_complaint": "Chest pain and breathlessness",
-    }
+API = "http://localhost:8000"
 
 def step(msg): print(f"\n{'='*60}\n  {msg}\n{'='*60}")
 def ok(msg):
@@ -83,23 +58,15 @@ step("2 · Pipeline verification")
 ok("NLP, Risk, and Investigations processed automatically during intake registration.")
 
 
-    # 3. Approve investigations
-    step("3 · Doctor approves Chest X-ray, CBC, ABG")
-    try:
-        request_json(
-            "POST",
-            "/api/investigations/approve",
-            json={
-                "intake_id": intake_id,
-                "approved_tests": ["Chest X-ray", "CBC", "ABG"],
-                "doctor_notes": "Phase1 test",
-                "doctor_name": "Dr.Phase1",
-            },
-        )
-        ok("Approval request completed for Chest X-ray, CBC, and ABG")
-    except (requests.RequestException, RuntimeError) as exc:
-        fail(f"Investigation approval failed: {exc}")
-        return 1
+# ── 3. Doctor approves Chest X-ray + CBC + ABG ────────────────────────────
+step("3 · Doctor approves Chest X-ray, CBC, ABG")
+requests.post(f"{API}/api/investigations/approve", json={
+    "intake_id": intake_id,
+    "approved_tests": ["Chest X-ray","CBC","ABG"],
+    "doctor_notes": "Phase1 test",
+    "doctor_name": "Dr.Phase1"
+}).raise_for_status()
+ok("3 investigations approved")
 
 # ── 4. Fetch investigation IDs ─────────────────────────────────────────────
 step("4 · Fetch investigation IDs")
@@ -127,23 +94,18 @@ def upload(inv_type, ev_type, filename, content):
     ok(f"Uploaded '{filename}' -> {inv_type} ({ev_type}) evidence_id={ev['evidence_id'][:8]}...")
     return ev
 
-    # 5. Upload distinct evidence for each investigation
-    step("5 · Upload distinct evidence — one file per investigation")
-    xray_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_xray.jpg")
-    if not os.path.isfile(xray_path):
-        fail(f"Required test image not found: {xray_path}")
-        return 1
+# Chest X-ray — use real test image for imaging analysis
+with open(xray_path,"rb") as f: xray_bytes = f.read()
+xray_ev  = upload("Chest X-ray", "xray",       "chest_xray_phase1.jpg", xray_bytes)
+cbc_ev   = upload("CBC",         "lab_report",  "cbc_report_phase1.txt",
+                   b"CBC Report\nWBC:12.5 RBC:4.2 Hgb:14.1 Plt:250")
+abg_ev   = upload("ABG",         "lab_report",  "abg_report_phase1.txt",
+                   b"ABG Report\npH:7.35 pCO2:45 pO2:80 HCO3:24")
 
-    def upload(
-        investigation_type: str,
-        evidence_type: str,
-        filename: str,
-        content: bytes,
-    ) -> Optional[Dict[str, Any]]:
-        investigation_id = inv_map.get(investigation_type)
-        if not investigation_id:
-            fail(f"No approved investigation for {investigation_type}")
-            return None
+# ── 6. Verify filtering ────────────────────────────────────────────────────
+step("6 · Verify evidence filtering (no cross-contamination)")
+r = requests.get(f"{API}/api/investigations/patient/{intake_id}"); r.raise_for_status()
+data2 = r.json()
 
 expected = {"Chest X-ray":["chest_xray_phase1.jpg"],
             "CBC":["cbc_report_phase1.txt"],
@@ -161,22 +123,37 @@ for inv in data2["investigations"]:
         fail(f"{itype}: expected={expected_files}  got={actual_files}")
         all_ok = False
 
-        try:
-            result = request_json(
-                "POST", "/api/evidence/upload", data=fields, files=files
-            ).json()
-        except (requests.RequestException, RuntimeError, ValueError) as exc:
-            fail(f"Upload failed for {filename}: {exc}")
-            return None
+unlinked = data2.get("unlinked_evidence",[])
+if unlinked:
+    fail(f"Unlinked evidence present: {[e['file_name'] for e in unlinked]}")
+    all_ok = False
+else:
+    ok("No unlinked evidence — all files properly assigned")
 
 print(f"\n  {'FILTERING PASS [OK]' if all_ok else 'FILTERING FAIL [FAIL]'}")
 
-    try:
-        with open(xray_path, "rb") as image_file:
-            xray_bytes = image_file.read()
-    except OSError as exc:
-        fail(f"Could not read test X-ray image: {exc}")
-        return 1
+# ── 7. Delete test ─────────────────────────────────────────────────────────
+step("7 · Delete evidence and verify removal")
+# Find ABG evidence_id from live data
+abg_inv = next((i for i in data2["investigations"]
+                if i["investigation_type"]=="ABG" and i["evidence"]), None)
+if abg_inv:
+    ev_id  = abg_inv["evidence"][0]["evidence_id"]
+    ev_name= abg_inv["evidence"][0]["file_name"]
+    r = requests.delete(f"{API}/api/evidence/{ev_id}")
+    if r.status_code == 204:
+        ok(f"DELETE 204 for '{ev_name}'")
+    else:
+        fail(f"DELETE returned {r.status_code}")
+    # Confirm gone
+    r2 = requests.get(f"{API}/api/investigations/patient/{intake_id}"); r2.raise_for_status()
+    d3 = r2.json()
+    all_ids = [e["evidence_id"] for inv in d3["investigations"] for e in inv["evidence"]]
+    all_ids += [e["evidence_id"] for e in d3.get("unlinked_evidence",[])]
+    if ev_id not in all_ids:
+        ok(f"'{ev_name}' confirmed removed from all investigation cards")
+    else:
+        fail(f"'{ev_name}' STILL appears after delete!")
 
 # ── 8. Imaging analysis ────────────────────────────────────────────────────
 step("8 · Run Imaging Analysis (EfficientNetB0)")
@@ -210,16 +187,25 @@ ps = d4.get("pipeline_status",{})
 ok(f"Pipeline -> NLP:{ps.get('nlp')}  Risk:{ps.get('risk')}  Lab:{ps.get('lab')}  "
    f"Imaging:{ps.get('imaging')}  Aggregation:{ps.get('aggregation')}")
 
-    expected = {
-        "Chest X-ray": ["chest_xray_phase1.jpg"],
-        "CBC": ["cbc_report_phase1.txt"],
-        "ABG": ["abg_report_phase1.txt"],
-    }
-    filtering_ok = True
-    found_names = set()
+xray_inv = next((i for i in d4["investigations"]
+                 if i["evidence_type"]=="xray" and i["status"]=="approved"), None)
+if xray_inv and xray_inv.get("analysis_result"):
+    ar = xray_inv["analysis_result"]
+    ok(f"Imaging result on card: {ar.get('prediction')}  {ar.get('probability'):.4f}")
+else:
+    fail("Imaging result NOT surfaced on investigation card")
 
-    for investigation in data.get("investigations", []):
-        if investigation.get("status") != "approved":
-            continue
-        investigation_type = investigation.get("investigation_type")
-        if investigation_type not in expected:
+lab_inv = next((i for i in d4["investigations"]
+                if i["evidence_type"]=="lab_report" and i["status"]=="approved"
+                and i.get("analysis_result")), None)
+if lab_inv:
+    ar = lab_inv["analysis_result"]
+    ok(f"Lab result on card: {ar.get('prediction')}  {ar.get('probability'):.4f}")
+else:
+    fail("Lab result NOT surfaced on investigation card")
+
+print(f"\n{'='*60}")
+print(f"  PHASE 1 COMPLETE")
+print(f"  Intake ID for browser: {intake_id}")
+print(f"  Queue URL: http://localhost:8080/nurse/queue")
+print(f"{'='*60}\n")
