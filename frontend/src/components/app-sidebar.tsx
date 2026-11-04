@@ -139,6 +139,16 @@ export function AppSidebar() {
     enabled: role === "doctor",
   });
 
+  // Doctor stats for workspace badges — uses same query key as dashboard
+  // so TanStack Query shares the cached response (no duplicate HTTP request)
+  const { data: docStats } = useQuery({
+    queryKey: ["doctor-dashboard-stats"],
+    queryFn: fetchDoctorDashboardStats,
+    refetchInterval: 30_000,
+    staleTime: 15_000,
+    enabled: role === "doctor",
+  });
+
   const queueBadgeCount = queueStats?.pending_approval_patients ?? 0;
 
   return (
